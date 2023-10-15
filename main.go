@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 
+	"github.com/miekg/pkcs11"
 	"github.com/pterm/pterm"
 	"github.com/pterm/pterm/putils"
 )
@@ -39,7 +40,7 @@ func main() {
 		fatal("Error loading module: %s", err)
 	}
 
-	loader.Info("Loaded cryptoki module %s", modulePath)
+	loader.Info("Loaded cryptoki module -> ", modulePath)
 	multi.Stop()
 
 	// Main program loop
@@ -56,9 +57,23 @@ func main() {
 				logger.Info("->", logger.Args("Label", slot.Label), logger.Args("SlotID", slotID))
 			}
 		case "List Tokens":
-			err := ListTokens(mod)
+			objects, err := ListTokens(mod)
 			if err != nil {
 				fatal("Error Listing tokens: %s", err)
+			}
+			if len(objects) == 0 {
+				logger.Info("No objects found")
+				break
+			}
+			for _, o := range objects {
+				attribs, _ := mod.ctx.GetAttributeValue(mod.sh, o, []*pkcs11.Attribute{
+					pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
+					pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
+				})
+				logger.Info("->",
+					logger.Args("ID", o),
+					logger.Args("Label", string(attribs[0].Value)),
+					logger.Args("Type", ClassToString(attribs[1].Value)))
 			}
 		case "Exit":
 			ExitFunc()
