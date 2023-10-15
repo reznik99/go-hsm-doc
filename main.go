@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"time"
 
 	"github.com/pterm/pterm"
@@ -10,24 +9,22 @@ import (
 
 var (
 	logger          = pterm.DefaultLogger
+	interactive     = pterm.DefaultInteractiveTextInput.WithOnInterruptFunc(ExitFunc)
 	TitlePrefix     = putils.LettersFromStringWithStyle("HSM", pterm.FgCyan.ToStyle())
 	Title           = putils.LettersFromStringWithStyle("-DOCTOR", pterm.FgLightMagenta.ToStyle())
 	TopLevelOptions = []string{"List Slots", "List Tokens", "Search Token", "Crypto Tests", "Performance Tests", "Exit"}
 )
 
-func exitFunc() {
-	logger.Info("Exiting HSM-DOCTOR...")
-	os.Exit(0)
-}
 func fatal(message string, args ...any) {
 	pterm.Error.WithFatal(true).Printfln(message, args...)
 }
 
 func main() {
+	logger.Print("\033[H\033[2J")
 	pterm.DefaultBigText.WithLetters(TitlePrefix, Title).Render()
 	logger.Info("Started HSM-DOCTOR v0.0.1...\n")
 
-	modulePath, err := pterm.DefaultInteractiveTextInput.Show("Input Cryptoki Library path (.dll / .so)")
+	modulePath, err := interactive.Show("Input Cryptoki Library path (.dll / .so)")
 	if err != nil {
 		fatal("Error loading module: %s", err)
 	}
@@ -35,30 +32,36 @@ func main() {
 	multi := pterm.DefaultMultiPrinter
 	loader, _ := pterm.DefaultSpinner.WithWriter(multi.NewWriter()).Start("Loading Cryptoki module")
 	multi.Start()
+
 	time.Sleep(1 * time.Second)
-
 	mod, err := NewP11(modulePath)
-	loader.Info("Loaded cryptoki module %s", modulePath)
-
-	multi.Stop()
-
-	pin, err := pterm.DefaultInteractiveTextInput.WithMask("*").Show("Slot/Partition PIN")
 	if err != nil {
-		fatal("Error reading Slot/Partition PIN: %s", err)
+		fatal("Error loading module: %s", err)
 	}
-	mod.Login(pin)
+
+	loader.Info("Loaded cryptoki module %s", modulePath)
+	multi.Stop()
 
 	// Main program loop
 	for {
-		option, err := pterm.DefaultInteractiveSelect.WithOnInterruptFunc(exitFunc).WithOptions(TopLevelOptions).Show()
+		option, err := pterm.DefaultInteractiveSelect.WithOnInterruptFunc(ExitFunc).WithOptions(TopLevelOptions).Show()
 		if err != nil {
 			fatal("Option selection error: %s", err)
 		}
 
-		logger.Info("Selected", logger.Args("Option", option))
 		switch option {
-		case "ListTokens":
-			// mod.ctx.GetSlotList(true)
+		case "List Slots":
+			slots := mod.GetSlots()
+			for slotID, slot := range slots {
+				logger.Info("->", logger.Args("Label", slot.Label), logger.Args("SlotID", slotID))
+			}
+		case "List Tokens":
+			err := ListTokens(mod)
+			if err != nil {
+				fatal("Error Listing tokens: %s", err)
+			}
+		case "Exit":
+			ExitFunc()
 		}
 	}
 }
