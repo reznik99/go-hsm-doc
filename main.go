@@ -5,17 +5,23 @@ import (
 	"os"
 	"time"
 
-	"github.com/miekg/pkcs11"
 	"github.com/pterm/pterm"
 	"github.com/pterm/pterm/putils"
 )
 
 var (
-	logger          = pterm.DefaultLogger
-	interactive     = pterm.DefaultInteractiveTextInput.WithOnInterruptFunc(ExitFunc)
-	TitlePrefix     = putils.LettersFromStringWithStyle("HSM", pterm.FgCyan.ToStyle())
-	Title           = putils.LettersFromStringWithStyle("-DOCTOR", pterm.FgLightMagenta.ToStyle())
-	TopLevelOptions = []string{"List HSM Info", "List Slots", "List Tokens", "Search Token", "Performance Tests", "Exit"}
+	logger = pterm.Logger{
+		Formatter: pterm.LogFormatterColorful,
+		Writer:    os.Stdout,
+		Level:     pterm.LogLevelTrace,
+		KeyStyles: map[string]pterm.Style{},
+		MaxWidth:  80,
+	}
+	Interactive       = pterm.DefaultInteractiveTextInput.WithOnInterruptFunc(ExitFunc)
+	InteractiveSelect = pterm.DefaultInteractiveSelect.WithOnInterruptFunc(ExitFunc)
+	TitlePrefix       = putils.LettersFromStringWithStyle("HSM", pterm.FgCyan.ToStyle())
+	Title             = putils.LettersFromStringWithStyle("-DOCTOR", pterm.FgLightMagenta.ToStyle())
+	TopLevelOptions   = []string{"List HSM Info", "List Slots", "List Tokens", "Generate Key", "Exit"}
 )
 
 func fatal(message string, args ...any) {
@@ -24,22 +30,22 @@ func fatal(message string, args ...any) {
 }
 
 func PrintTitle() {
-	logger.Print("\033[H\033[2J")
+	pterm.Info.Println("\033[H\033[2J")
 	pterm.DefaultBigText.WithLetters(TitlePrefix, Title).Render()
-	logger.Info("Version 0.0.1\n")
+	pterm.Info.Println("Version 0.0.1")
 }
 
 func PressEnterToContinue() {
-	_, err := pterm.DefaultInteractiveContinue.Show("Return to menu?")
+	_, err := Interactive.Show("Press any key to continue")
 	if err != nil {
-		fatal("Option selection error: %s", err)
+		logger.Error("Error reading user input", logger.Args("", err))
 	}
 }
 
 func main() {
 	PrintTitle()
 
-	modulePath, err := interactive.Show("Input Cryptoki Library path (.dll / .so)")
+	modulePath, err := Interactive.Show("Input Cryptoki Library path (.dll / .so)")
 	if err != nil {
 		fatal("Error reading user input: %s", err)
 	}
@@ -62,9 +68,10 @@ func main() {
 
 	// Main program loop
 	for {
-		option, err := pterm.DefaultInteractiveSelect.WithOnInterruptFunc(ExitFunc).WithOptions(TopLevelOptions).Show()
+		option, err := InteractiveSelect.WithOptions(TopLevelOptions).Show("Select Operation")
 		if err != nil {
-			fatal("Option selection error: %s", err)
+			logger.Error("Option selection error", logger.Args("", err))
+			continue
 		}
 
 		switch option {
@@ -88,27 +95,30 @@ func main() {
 				break
 			}
 			for slotID, slot := range slots {
-				logger.Info("->", logger.Args("Label", slot.Label), logger.Args("SlotID", slotID))
+				si, err := mod.ctx.GetSlotInfo(slotID)
+				if err != nil {
+					continue
+				}
+				logger.Info(fmt.Sprintf("-> %s(%d)", slot.Label, slotID),
+					logger.Args("Label", slot.Label),
+					logger.Args("Model", slot.Model),
+					logger.Args("SerialNumber", slot.SerialNumber),
+					logger.Args("MaxRwSessionCount", slot.MaxRwSessionCount),
+					logger.Args("ManufacturerID", si.ManufacturerID),
+					logger.Args("SlotDescription", si.SlotDescription),
+					logger.Args("HardwareVersion", fmt.Sprintf("v%d.%d", si.HardwareVersion.Major, si.HardwareVersion.Minor)),
+					logger.Args("FirmwareVersion", fmt.Sprintf("v%d.%d", si.FirmwareVersion.Major, si.FirmwareVersion.Minor)),
+				)
 			}
 		case "List Tokens":
-			objects, err := ListTokens(mod)
+			err := ListTokens(mod)
 			if err != nil {
-				logger.Error("Error Listing tokens", logger.Args("", err))
-				break
+				logger.Error("Error listing tokens", logger.Args("", err))
 			}
-			if len(objects) == 0 {
-				logger.Warn("No objects found")
-				break
-			}
-			for _, o := range objects {
-				attribs, _ := mod.ctx.GetAttributeValue(mod.sh, o, []*pkcs11.Attribute{
-					pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
-					pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
-				})
-				logger.Info("->",
-					logger.Args("ID", o),
-					logger.Args("Label", string(attribs[0].Value)),
-					logger.Args("Type", ClassToString(attribs[1].Value)))
+		case "Generate Key":
+			err := GenerateKey(mod)
+			if err != nil {
+				logger.Error("Error generating key", logger.Args("", err))
 			}
 		case "Exit":
 			ExitFunc()

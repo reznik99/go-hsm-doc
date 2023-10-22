@@ -1,56 +1,168 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/miekg/pkcs11"
-	"github.com/pterm/pterm"
 )
 
-func ListTokens(mod *P11) ([]pkcs11.ObjectHandle, error) {
+var algorithms = []string{"RSA", "EC", "AES", "3DES", "DES"}
+var keyLengths = map[string][]string{
+	"RSA":  {"1024", "2048", "4096"},
+	"EC":   {"256", "384", "512"},
+	"AES":  {"128", "192", "256"},
+	"3DES": {"128", "192"},
+	"DES":  {"64"},
+}
+
+func GenerateKey(mod *P11) error {
+
+	// Select Slot for key
+	selectedSlot, err := PromptSlotSelection(mod)
+	if err != nil {
+		return err
+	}
+
+	// Select Key Label for key
+	keyLabel, err := Interactive.Show("Key Label")
+	if err != nil {
+		return err
+	}
+
+	// Select Key Algorithm
+	algorithm, err := InteractiveSelect.WithOptions(algorithms).Show("Select Algorithm")
+	if err != nil {
+		return err
+	}
+
+	// Select Key length
+	keyLength, err := InteractiveSelect.WithOptions(keyLengths[algorithm]).Show("Select Keylength")
+	if err != nil {
+		return err
+	}
+
+	mechanism := StringToGenMech(algorithm)
+	if mechanism == nil {
+		return fmt.Errorf("unable to parse algorithm: '%s'", algorithm)
+	}
+	length, _ := strconv.Atoi(keyLength)
+
+	template := []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, keyLabel),
+		pkcs11.NewAttribute(pkcs11.CKA_VALUE_LEN, length),
+	}
+
+	// Open session and login to slot
+	err = mod.OpenSession(selectedSlot)
+	if err != nil {
+		return err
+	}
+	if err = Login(mod, selectedSlot); err != nil {
+		return err
+	}
+
+	sh, ok := mod.sessions[selectedSlot]
+	if !ok {
+		return fmt.Errorf("session doesn't exist for slot: %d", selectedSlot)
+	}
+	// Generate the key
+	_, err = mod.ctx.GenerateKey(sh, []*pkcs11.Mechanism{mechanism}, template)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ListTokens(mod *P11) error {
+	selectedSlot, err := PromptSlotSelection(mod)
+	if err != nil {
+		return err
+	}
+
+	err = mod.OpenSession(uint(selectedSlot))
+	if err != nil {
+		return fmt.Errorf("open session error: %s", err)
+	}
+
+	err = Login(mod, selectedSlot)
+	if err != nil {
+		return err
+	}
+
+	objects, err := mod.FindObjects(selectedSlot, []*pkcs11.Attribute{})
+	if err != nil {
+		return err
+	}
+	if len(objects) == 0 {
+		return fmt.Errorf("No objects found")
+	}
+
+	sh, ok := mod.sessions[selectedSlot]
+	if !ok {
+		return fmt.Errorf("session doesn't exist for slot: %d", selectedSlot)
+	}
+
+	for _, o := range objects {
+		attribs, _ := mod.ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
+			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
+			pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
+		})
+		logger.Info(fmt.Sprintf("-> %s(%d)", attribs[0].Value, o),
+			logger.Args("Label", string(attribs[0].Value)),
+			logger.Args("Type", TypeToString(attribs[1].Value)),
+			logger.Args("Type", ClassToString(attribs[2].Value)),
+			logger.Args("Handle", o),
+		)
+	}
+
+	return nil
+}
+
+func Login(mod *P11, slotID uint) error {
+	pin, err := Interactive.WithMask("*").Show("Slot/Partition PIN (optional)")
+	if err != nil {
+		return fmt.Errorf("error reading Slot/Partition PIN: %s", err)
+	}
+	if pin != "" {
+		err = mod.Login(slotID, pin)
+		if err != nil && !errors.Is(err, pkcs11.Error(pkcs11.CKR_USER_ALREADY_LOGGED_IN)) {
+			return err
+		}
+	}
+	return nil
+}
+
+func ExitFunc() {
+	logger.Info("Exiting HSM-DOCTOR...")
+	os.Exit(0)
+}
+
+func PromptSlotSelection(mod *P11) (uint, error) {
 	options := []string{}
 	slots, err := mod.GetSlots()
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 
 	for _, slot := range slots {
 		options = append(options, slot.Label)
 	}
 
-	slotLabel, err := pterm.DefaultInteractiveSelect.WithOnInterruptFunc(ExitFunc).WithOptions(options).Show("Select Slot")
+	slotLabel, err := InteractiveSelect.WithOptions(options).Show("Select Slot")
 	if err != nil {
-		return nil, fmt.Errorf("slot selection error: %s", err)
+		return 0, fmt.Errorf("slot selection error: %s", err)
 	}
 
-	selectedSlot := -1
 	for slotID, slot := range slots {
 		if slot.Label == slotLabel {
-			selectedSlot = int(slotID)
+			return slotID, nil
 		}
 	}
 
-	err = mod.OpenSession(uint(selectedSlot))
-	if err != nil {
-		return nil, fmt.Errorf("open session error: %s", err)
-	}
-
-	pin, err := interactive.WithMask("*").Show("Slot/Partition PIN (optional)")
-	if err != nil {
-		return nil, fmt.Errorf("error reading Slot/Partition PIN: %s", err)
-	}
-	if pin != "" {
-		err = mod.Login(pin)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	return mod.FindObjects([]*pkcs11.Attribute{})
-}
-
-func ExitFunc() {
-	logger.Info("Exiting HSM-DOCTOR...")
-	os.Exit(0)
+	return 0, fmt.Errorf("slot not selected")
 }
