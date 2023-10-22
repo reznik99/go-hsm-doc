@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -17,11 +16,11 @@ var (
 		KeyStyles: map[string]pterm.Style{},
 		MaxWidth:  80,
 	}
+	TopLevelOptions   = []string{"List HSM Info", "List Slots", "List Tokens", "Find Token", "Generate Key", "Exit"}
 	Interactive       = pterm.DefaultInteractiveTextInput.WithOnInterruptFunc(ExitFunc)
-	InteractiveSelect = pterm.DefaultInteractiveSelect.WithOnInterruptFunc(ExitFunc)
+	InteractiveSelect = pterm.DefaultInteractiveSelect.WithOnInterruptFunc(ExitFunc).WithMaxHeight(len(TopLevelOptions))
 	TitlePrefix       = putils.LettersFromStringWithStyle("HSM", pterm.FgCyan.ToStyle())
 	Title             = putils.LettersFromStringWithStyle("-DOCTOR", pterm.FgLightMagenta.ToStyle())
-	TopLevelOptions   = []string{"List HSM Info", "List Slots", "List Tokens", "Generate Key", "Exit"}
 )
 
 func fatal(message string, args ...any) {
@@ -68,6 +67,8 @@ func main() {
 
 	// Main program loop
 	for {
+		PrintTitle()
+
 		option, err := InteractiveSelect.WithOptions(TopLevelOptions).Show("Select Operation")
 		if err != nil {
 			logger.Error("Option selection error", logger.Args("", err))
@@ -76,44 +77,24 @@ func main() {
 
 		switch option {
 		case "List HSM Info":
-			info, err := mod.ctx.GetInfo()
+			err := ListHSMInfo(mod)
 			if err != nil {
 				logger.Error("Error getting HSM info", logger.Args("", err))
-				break
 			}
-			logger.Info(modulePath,
-				logger.Args("ManufacturerID", info.ManufacturerID),
-				logger.Args("LibraryDescription", info.LibraryDescription),
-				logger.Args("LibraryVersion", fmt.Sprintf("v%d.%d", info.LibraryVersion.Major, info.LibraryVersion.Minor)),
-				logger.Args("CryptokiVersion", fmt.Sprintf("v%d.%d", info.CryptokiVersion.Major, info.CryptokiVersion.Minor)),
-				logger.Args("Flags", info.Flags),
-			)
 		case "List Slots":
-			slots, err := mod.GetSlots()
+			err := ListSlots(mod)
 			if err != nil {
-				logger.Error("Error getting slots", logger.Args("", err))
-				break
-			}
-			for slotID, slot := range slots {
-				si, err := mod.ctx.GetSlotInfo(slotID)
-				if err != nil {
-					continue
-				}
-				logger.Info(fmt.Sprintf("-> %s(%d)", slot.Label, slotID),
-					logger.Args("Label", slot.Label),
-					logger.Args("Model", slot.Model),
-					logger.Args("SerialNumber", slot.SerialNumber),
-					logger.Args("MaxRwSessionCount", slot.MaxRwSessionCount),
-					logger.Args("ManufacturerID", si.ManufacturerID),
-					logger.Args("SlotDescription", si.SlotDescription),
-					logger.Args("HardwareVersion", fmt.Sprintf("v%d.%d", si.HardwareVersion.Major, si.HardwareVersion.Minor)),
-					logger.Args("FirmwareVersion", fmt.Sprintf("v%d.%d", si.FirmwareVersion.Major, si.FirmwareVersion.Minor)),
-				)
+				logger.Error("Error listing slots", logger.Args("", err))
 			}
 		case "List Tokens":
 			err := ListTokens(mod)
 			if err != nil {
 				logger.Error("Error listing tokens", logger.Args("", err))
+			}
+		case "Find Token":
+			err := FindToken(mod)
+			if err != nil {
+				logger.Error("Error during Find Token operation", logger.Args("", err))
 			}
 		case "Generate Key":
 			err := GenerateKey(mod)
@@ -126,6 +107,5 @@ func main() {
 
 		// Pause CLI to let user read output of command. On keypress, clear screen and restart CLI options.
 		PressEnterToContinue()
-		PrintTitle()
 	}
 }

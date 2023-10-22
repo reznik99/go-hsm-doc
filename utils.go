@@ -28,17 +28,17 @@ func TypeToString(key_type []byte) string {
 func ClassToString(class []byte) string {
 	switch class[0] {
 	case pkcs11.CKO_DATA:
-		return "DATA"
+		return "DATA       "
 	case pkcs11.CKO_CERTIFICATE:
 		return "CERTIFICATE"
 	case pkcs11.CKO_PUBLIC_KEY:
-		return "PUBLIC_KEY"
+		return "PUBLIC_KEY "
 	case pkcs11.CKO_PRIVATE_KEY:
 		return "PRIVATE_KEY"
 	case pkcs11.CKO_SECRET_KEY:
-		return "SECRET_KEY"
+		return "SECRET_KEY "
 	default:
-		return "N/A"
+		return "N/A        "
 	}
 }
 
