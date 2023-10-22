@@ -16,11 +16,11 @@ func NewP11(modulePath string) (*P11, error) {
 
 	module.ctx = pkcs11.New(modulePath)
 	if module.ctx == nil {
-		fatal("Error loading module")
+		return nil, fmt.Errorf("error loading module")
 	}
 	err := module.ctx.Initialize()
 	if err != nil {
-		fatal("Error initializing module: %s", err)
+		return nil, fmt.Errorf("error initializing module: %s", err)
 	}
 
 	return module, nil

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/miekg/pkcs11"
@@ -13,11 +15,12 @@ var (
 	interactive     = pterm.DefaultInteractiveTextInput.WithOnInterruptFunc(ExitFunc)
 	TitlePrefix     = putils.LettersFromStringWithStyle("HSM", pterm.FgCyan.ToStyle())
 	Title           = putils.LettersFromStringWithStyle("-DOCTOR", pterm.FgLightMagenta.ToStyle())
-	TopLevelOptions = []string{"List Slots", "List Tokens", "Search Token", "Crypto Tests", "Performance Tests", "Exit"}
+	TopLevelOptions = []string{"List HSM Info", "List Slots", "List Tokens", "Search Token", "Performance Tests", "Exit"}
 )
 
 func fatal(message string, args ...any) {
-	pterm.Error.WithFatal(true).Printfln(message, args...)
+	pterm.Error.Printfln(message, args...)
+	os.Exit(1)
 }
 
 func PrintTitle() {
@@ -38,7 +41,10 @@ func main() {
 
 	modulePath, err := interactive.Show("Input Cryptoki Library path (.dll / .so)")
 	if err != nil {
-		fatal("Error loading module: %s", err)
+		fatal("Error reading user input: %s", err)
+	}
+	if modulePath == "" {
+		fatal("Module path is empty but required")
 	}
 
 	multi := pterm.DefaultMultiPrinter
@@ -48,7 +54,7 @@ func main() {
 	time.Sleep(1 * time.Second)
 	mod, err := NewP11(modulePath)
 	if err != nil {
-		fatal("Error loading module: %s", err)
+		fatal("Error loading module: '%s'", err)
 	}
 
 	loader.Info("Loaded cryptoki module -> ", modulePath)
@@ -62,13 +68,25 @@ func main() {
 		}
 
 		switch option {
+		case "List HSM Info":
+			info, err := mod.ctx.GetInfo()
+			if err != nil {
+				logger.Error("Error getting HSM info", logger.Args("", err))
+				break
+			}
+			logger.Info(modulePath,
+				logger.Args("ManufacturerID", info.ManufacturerID),
+				logger.Args("LibraryDescription", info.LibraryDescription),
+				logger.Args("LibraryVersion", fmt.Sprintf("v%d.%d", info.LibraryVersion.Major, info.LibraryVersion.Minor)),
+				logger.Args("CryptokiVersion", fmt.Sprintf("v%d.%d", info.CryptokiVersion.Major, info.CryptokiVersion.Minor)),
+				logger.Args("Flags", info.Flags),
+			)
 		case "List Slots":
 			slots, err := mod.GetSlots()
 			if err != nil {
 				logger.Error("Error getting slots", logger.Args("", err))
 				break
 			}
-			logger.Info("Slots found", logger.Args("", len(slots)))
 			for slotID, slot := range slots {
 				logger.Info("->", logger.Args("Label", slot.Label), logger.Args("SlotID", slotID))
 			}
