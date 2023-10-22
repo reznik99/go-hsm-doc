@@ -10,7 +10,12 @@ import (
 
 func ListTokens(mod *P11) ([]pkcs11.ObjectHandle, error) {
 	options := []string{}
-	for _, slot := range mod.GetSlots() {
+	slots, err := mod.GetSlots()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, slot := range slots {
 		options = append(options, slot.Label)
 	}
 
@@ -20,7 +25,7 @@ func ListTokens(mod *P11) ([]pkcs11.ObjectHandle, error) {
 	}
 
 	selectedSlot := -1
-	for slotID, slot := range mod.GetSlots() {
+	for slotID, slot := range slots {
 		if slot.Label == slotLabel {
 			selectedSlot = int(slotID)
 		}
@@ -36,7 +41,10 @@ func ListTokens(mod *P11) ([]pkcs11.ObjectHandle, error) {
 		return nil, fmt.Errorf("error reading Slot/Partition PIN: %s", err)
 	}
 	if pin != "" {
-		mod.Login(pin)
+		err = mod.Login(pin)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return mod.FindObjects([]*pkcs11.Attribute{})

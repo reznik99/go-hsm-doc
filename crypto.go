@@ -26,24 +26,27 @@ func NewP11(modulePath string) (*P11, error) {
 	return module, nil
 }
 
-func (p *P11) GetSlots() map[uint]pkcs11.TokenInfo {
+func (p *P11) GetSlots() (map[uint]pkcs11.TokenInfo, error) {
 	output := map[uint]pkcs11.TokenInfo{}
 
 	slots, err := p.ctx.GetSlotList(true)
 	if err != nil {
-		fatal("Error reading Slots: %s", err)
+		return nil, fmt.Errorf("error reading Slots: %s", err)
 	}
 
 	for _, slotID := range slots {
 		ti, err := p.ctx.GetTokenInfo(slotID)
 		if err != nil {
-			logger.Warn("Error getting slot info: ", logger.Args("Error", err))
+			logger.Warn("Error getting slot info", logger.Args("", err))
+			continue
+		}
+		if ti.Label == "" {
 			continue
 		}
 		output[slotID] = ti
 	}
 
-	return output
+	return output, nil
 }
 
 func (p *P11) FindObjects(template []*pkcs11.Attribute) ([]pkcs11.ObjectHandle, error) {

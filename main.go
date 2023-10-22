@@ -20,10 +20,21 @@ func fatal(message string, args ...any) {
 	pterm.Error.WithFatal(true).Printfln(message, args...)
 }
 
-func main() {
+func PrintTitle() {
 	logger.Print("\033[H\033[2J")
 	pterm.DefaultBigText.WithLetters(TitlePrefix, Title).Render()
-	logger.Info("Started HSM-DOCTOR v0.0.1...\n")
+	logger.Info("Version 0.0.1\n")
+}
+
+func PressEnterToContinue() {
+	_, err := pterm.DefaultInteractiveContinue.Show("Return to menu?")
+	if err != nil {
+		fatal("Option selection error: %s", err)
+	}
+}
+
+func main() {
+	PrintTitle()
 
 	modulePath, err := interactive.Show("Input Cryptoki Library path (.dll / .so)")
 	if err != nil {
@@ -52,17 +63,23 @@ func main() {
 
 		switch option {
 		case "List Slots":
-			slots := mod.GetSlots()
+			slots, err := mod.GetSlots()
+			if err != nil {
+				logger.Error("Error getting slots", logger.Args("", err))
+				break
+			}
+			logger.Info("Slots found", logger.Args("", len(slots)))
 			for slotID, slot := range slots {
 				logger.Info("->", logger.Args("Label", slot.Label), logger.Args("SlotID", slotID))
 			}
 		case "List Tokens":
 			objects, err := ListTokens(mod)
 			if err != nil {
-				fatal("Error Listing tokens: %s", err)
+				logger.Error("Error Listing tokens", logger.Args("", err))
+				break
 			}
 			if len(objects) == 0 {
-				logger.Info("No objects found")
+				logger.Warn("No objects found")
 				break
 			}
 			for _, o := range objects {
@@ -78,5 +95,9 @@ func main() {
 		case "Exit":
 			ExitFunc()
 		}
+
+		// Pause CLI to let user read output of command. On keypress, clear screen and restart CLI options.
+		PressEnterToContinue()
+		PrintTitle()
 	}
 }
