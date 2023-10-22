@@ -104,3 +104,22 @@ func (p *P11) Finalize() error {
 	p.ctx.Destroy()
 	return nil
 }
+
+func (p *P11) GenerateAESKey(slotID uint, label string, keylength int, extractable bool) error {
+	sh, ok := p.sessions[slotID]
+	if !ok {
+		return fmt.Errorf("session doesn't exist for slot: %d", slotID)
+	}
+
+	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_GEN, nil)}
+	temp := []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
+		pkcs11.NewAttribute(pkcs11.CKA_VALUE_LEN, keylength/8),
+		pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
+		pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, extractable),
+	}
+
+	_, err := p.ctx.GenerateKey(sh, mech, temp)
+
+	return err
+}

@@ -43,33 +43,26 @@ func GenerateKey(mod *P11) error {
 	if err != nil {
 		return err
 	}
-
-	mechanism := StringToGenMech(algorithm)
-	if mechanism == nil {
-		return fmt.Errorf("unable to parse algorithm: '%s'", algorithm)
-	}
 	length, _ := strconv.Atoi(keyLength)
 
-	template := []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_LABEL, keyLabel),
-		pkcs11.NewAttribute(pkcs11.CKA_VALUE_LEN, length),
-	}
-
 	// Open session and login to slot
-	err = mod.OpenSession(selectedSlot)
-	if err != nil {
+	if err = mod.OpenSession(selectedSlot); err != nil {
 		return err
 	}
 	if err = Login(mod, selectedSlot); err != nil {
 		return err
 	}
 
-	sh, ok := mod.sessions[selectedSlot]
-	if !ok {
-		return fmt.Errorf("session doesn't exist for slot: %d", selectedSlot)
+	switch algorithm {
+	case "RSA":
+
+	case "EC":
+
+	case "AES":
+		err = mod.GenerateAESKey(selectedSlot, keyLabel, length, false)
+	case "3DES":
+
 	}
-	// Generate the key
-	_, err = mod.ctx.GenerateKey(sh, []*pkcs11.Mechanism{mechanism}, template)
 	if err != nil {
 		return err
 	}
@@ -98,7 +91,7 @@ func ListTokens(mod *P11) error {
 		return err
 	}
 	if len(objects) == 0 {
-		return fmt.Errorf("No objects found")
+		return fmt.Errorf("no objects found")
 	}
 
 	sh, ok := mod.sessions[selectedSlot]
