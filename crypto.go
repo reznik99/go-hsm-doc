@@ -12,7 +12,9 @@ type P11 struct {
 }
 
 func NewP11(modulePath string) (*P11, error) {
-	module := &P11{}
+	module := &P11{
+		sessions: map[uint]pkcs11.SessionHandle{},
+	}
 
 	module.ctx = pkcs11.New(modulePath)
 	if module.ctx == nil {
