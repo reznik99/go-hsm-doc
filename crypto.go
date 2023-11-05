@@ -3,8 +3,11 @@ package main
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/pem"
 	"fmt"
 	"math/big"
@@ -331,7 +334,7 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) error {
 	switch algorithm {
 	case pkcs11.CKK_AES:
-		return fmt.Errorf("secret key export unimplemented")
+		return p.ExportSecretKeyAES(sh, oh)
 	case pkcs11.CKK_DES:
 		return fmt.Errorf("secret key export unimplemented")
 	case pkcs11.CKK_DES2:
@@ -339,6 +342,37 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, a
 	case pkcs11.CKK_DES3:
 		return fmt.Errorf("secret key export unimplemented")
 	}
+	return nil
+}
+
+func (p *P11) ExportSecretKeyAES(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) error {
+	priv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return err
+	}
+
+	wrapKey, err := p.ImportPublicKey(sh, priv.PublicKey)
+	if err != nil {
+		return fmt.Errorf("wrapping key import error: %w", err)
+	}
+
+	// Wrap AES key with imported wrapping key
+	wrapParam := pkcs11.NewOAEPParams(pkcs11.CKM_SHA_1, pkcs11.CKG_MGF1_SHA1, pkcs11.CKZ_DATA_SPECIFIED, nil)
+	wrapMech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_OAEP, wrapParam)}
+	wrappedKey, err := p.ctx.WrapKey(sh, wrapMech, wrapKey, oh)
+	if err != nil {
+		return fmt.Errorf("wrapping error: %w", err)
+	}
+
+	// Unwrap key
+	unwrappedKey, err := rsa.DecryptOAEP(sha1.New(), rand.Reader, priv, wrappedKey, nil)
+	if err != nil {
+		return fmt.Errorf("unwrapping error: %w", err)
+	}
+
+	// Print the Raw AES hex string to the console.
+	fmt.Printf("%X\n", unwrappedKey)
+
 	return nil
 }
 
@@ -351,4 +385,26 @@ func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, 
 		return fmt.Errorf("private key export unimplemented")
 	}
 	return nil
+}
+
+func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any) (pkcs11.ObjectHandle, error) {
+	switch publicKey := pub.(type) {
+	case *rsa.PublicKey:
+		// Import public key into HSM
+		// Allow for 128-bit integer for future-proofing
+		exponent := make([]byte, 8)
+		binary.BigEndian.PutUint64(exponent, uint64(publicKey.E))
+		wrapkeyTemplate := []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_MODULUS, publicKey.N.Bytes()),
+			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, exponent),
+			pkcs11.NewAttribute(pkcs11.CKA_TOKEN, false),
+			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_RSA),
+			pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
+		}
+		return p.ctx.CreateObject(sh, wrapkeyTemplate)
+	case *ecdsa.PublicKey:
+		return 0, fmt.Errorf("ec public key import unimplemented")
+	default:
+		return 0, fmt.Errorf("unrecognized key type: %T", publicKey)
+	}
 }
