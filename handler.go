@@ -60,14 +60,14 @@ func ExportToken(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error
 	objectType := binary.LittleEndian.Uint32(attribs[1].Value)
 
 	switch objectType {
-	case pkcs11.CKO_CERTIFICATE: // Export certificate without wrapping
-		return mod.ExportCertificate(sh, o)
-	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY: // Export public key without wrapping
-		return mod.ExportPublicKey(sh, o, algorithmType)
-	case pkcs11.CKO_PRIVATE_KEY: // Export private key with Symmetric wrapping
-		return mod.ExportPrivateKey(sh, o, algorithmType)
-	case pkcs11.CKO_SECRET_KEY: // export secret key with Asymmetric wrapping
-		return mod.ExportSecretKey(sh, o, algorithmType)
+	case pkcs11.CKO_CERTIFICATE:
+		return mod.ExportCertificate(sh, o) // Export certificate without wrapping
+	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY:
+		return mod.ExportPublicKey(sh, o, algorithmType) // Export public key without wrapping
+	case pkcs11.CKO_PRIVATE_KEY:
+		return mod.ExportPrivateKey(sh, o, algorithmType) // Export private key with Symmetric wrapping
+	case pkcs11.CKO_SECRET_KEY:
+		return mod.ExportSecretKey(sh, o, algorithmType) // export secret key with Asymmetric wrapping
 	}
 
 	return nil
@@ -77,12 +77,6 @@ func GenerateKey(mod *P11) error {
 
 	// Select Slot for key
 	selectedSlot, err := PromptSlotSelection(mod)
-	if err != nil {
-		return err
-	}
-
-	// Select Key Label for key
-	keyLabel, err := Interactive.Show("Key Label")
 	if err != nil {
 		return err
 	}
@@ -100,6 +94,17 @@ func GenerateKey(mod *P11) error {
 	}
 	length, _ := strconv.Atoi(keyLength)
 
+	// Select Key Label for key
+	keyLabel, err := Interactive.Show("Key Label")
+	if err != nil {
+		return err
+	}
+
+	extractable, err := pterm.DefaultInteractiveConfirm.Show("Extractable")
+	if err != nil {
+		return err
+	}
+
 	// Open session and login to slot
 	if err = mod.OpenSession(selectedSlot); err != nil {
 		return err
@@ -112,13 +117,13 @@ func GenerateKey(mod *P11) error {
 
 	switch algorithm {
 	case "RSA":
-		err = mod.GenerateRSAKeypair(selectedSlot, keyLabel, length, false)
+		err = mod.GenerateRSAKeypair(selectedSlot, keyLabel, length, extractable)
 	case "EC":
-		err = mod.GenerateECKeypair(selectedSlot, keyLabel, length, false)
+		err = mod.GenerateECKeypair(selectedSlot, keyLabel, length, extractable)
 	case "AES":
-		err = mod.GenerateAESKey(selectedSlot, keyLabel, length, false)
+		err = mod.GenerateAESKey(selectedSlot, keyLabel, length, extractable)
 	case "DES", "3DES":
-		err = mod.GenerateDESKey(selectedSlot, keyLabel, length, false)
+		err = mod.GenerateDESKey(selectedSlot, keyLabel, length, extractable)
 	default:
 		err = fmt.Errorf("unrecognized algorithm %s", algorithm)
 	}
