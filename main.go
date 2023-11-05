@@ -17,11 +17,12 @@ var (
 		KeyStyles: map[string]pterm.Style{},
 		MaxWidth:  80,
 	}
-	TopLevelOptions   = []string{"List HSM Info", "List Slots", "List Tokens", "Find Token", "Generate Key", "Exit"}
-	Interactive       = pterm.DefaultInteractiveTextInput.WithOnInterruptFunc(ExitFunc)
-	InteractiveSelect = pterm.DefaultInteractiveSelect.WithOnInterruptFunc(ExitFunc).WithMaxHeight(len(TopLevelOptions))
-	TitlePrefix       = putils.LettersFromStringWithStyle("HSM", pterm.FgCyan.ToStyle())
-	Title             = putils.LettersFromStringWithStyle("-DOCTOR", pterm.FgLightMagenta.ToStyle())
+	TopLevelOptions    = []string{"List HSM Info", "List Slots", "List Tokens", "Find Token", "Generate Key", "Exit"}
+	InteractiveText    = pterm.DefaultInteractiveTextInput.WithOnInterruptFunc(ExitFunc)
+	InteractiveConfirm = pterm.DefaultInteractiveConfirm.WithOnInterruptFunc(ExitFunc)
+	InteractiveSelect  = pterm.DefaultInteractiveSelect.WithOnInterruptFunc(ExitFunc).WithMaxHeight(len(TopLevelOptions))
+	TitlePrefix        = putils.LettersFromStringWithStyle("HSM", pterm.FgCyan.ToStyle())
+	Title              = putils.LettersFromStringWithStyle("-DOCTOR", pterm.FgLightMagenta.ToStyle())
 )
 
 func fatal(message string, args ...any) {
@@ -36,7 +37,7 @@ func PrintTitle() {
 }
 
 func PressEnterToContinue() {
-	_, err := Interactive.Show("Press any key to continue")
+	_, err := InteractiveText.Show("Press any key to continue")
 	if err != nil {
 		logger.Error("Error reading user input", logger.Args("", err))
 	}
@@ -45,7 +46,7 @@ func PressEnterToContinue() {
 func main() {
 	PrintTitle()
 
-	modulePath, err := Interactive.Show("Input Cryptoki Library path (.dll / .so)")
+	modulePath, err := InteractiveText.Show("Input Cryptoki Library path (.dll / .so)")
 	if err != nil {
 		fatal("Error reading user input: %s", err)
 	}

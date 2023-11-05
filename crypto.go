@@ -330,22 +330,8 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 	return nil
 }
 
-// ExportSecretKey TODO
+// ExportSecretKey exports an AES/DES/3DES key using an ephemeral RSA_OAEP wrapping key.
 func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) error {
-	switch algorithm {
-	case pkcs11.CKK_AES:
-		return p.ExportSecretKeyAES(sh, oh)
-	case pkcs11.CKK_DES:
-		return fmt.Errorf("secret key export unimplemented")
-	case pkcs11.CKK_DES2:
-		return fmt.Errorf("secret key export unimplemented")
-	case pkcs11.CKK_DES3:
-		return fmt.Errorf("secret key export unimplemented")
-	}
-	return nil
-}
-
-func (p *P11) ExportSecretKeyAES(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) error {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return err
@@ -387,9 +373,10 @@ func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, 
 	return nil
 }
 
+// ImportPublicKey imports a public key into the hsm without wrapping
 func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any) (pkcs11.ObjectHandle, error) {
 	switch publicKey := pub.(type) {
-	case *rsa.PublicKey:
+	case rsa.PublicKey:
 		// Import public key into HSM
 		// Allow for 128-bit integer for future-proofing
 		exponent := make([]byte, 8)
@@ -402,7 +389,7 @@ func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any) (pkcs11.ObjectHa
 			pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
 		}
 		return p.ctx.CreateObject(sh, wrapkeyTemplate)
-	case *ecdsa.PublicKey:
+	case ecdsa.PublicKey:
 		return 0, fmt.Errorf("ec public key import unimplemented")
 	default:
 		return 0, fmt.Errorf("unrecognized key type: %T", publicKey)

@@ -95,12 +95,12 @@ func GenerateKey(mod *P11) error {
 	length, _ := strconv.Atoi(keyLength)
 
 	// Select Key Label for key
-	keyLabel, err := Interactive.Show("Key Label")
+	keyLabel, err := InteractiveText.Show("Key Label")
 	if err != nil {
 		return err
 	}
 
-	extractable, err := pterm.DefaultInteractiveConfirm.Show("Extractable")
+	extractable, err := InteractiveConfirm.Show("Extractable")
 	if err != nil {
 		return err
 	}
@@ -315,7 +315,7 @@ func ListTokens(mod *P11) error {
 }
 
 func Login(mod *P11, slotID uint) error {
-	pin, err := Interactive.WithMask("*").Show("Slot/Partition PIN (optional)")
+	pin, err := InteractiveText.WithMask("*").Show("Slot/Partition PIN (optional)")
 	if err != nil {
 		return fmt.Errorf("error reading Slot/Partition PIN: %s", err)
 	}
