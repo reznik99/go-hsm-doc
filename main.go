@@ -9,7 +9,8 @@ import (
 )
 
 var (
-	logger = pterm.Logger{
+	Version = "Development"
+	logger  = pterm.Logger{
 		Formatter: pterm.LogFormatterColorful,
 		Writer:    os.Stdout,
 		Level:     pterm.LogLevelTrace,
@@ -31,7 +32,7 @@ func fatal(message string, args ...any) {
 func PrintTitle() {
 	pterm.Info.Println("\033[H\033[2J")
 	pterm.DefaultBigText.WithLetters(TitlePrefix, Title).Render()
-	pterm.Info.Println("Version 0.0.2")
+	pterm.Info.Printfln("Version %q", Version)
 }
 
 func PressEnterToContinue() {
