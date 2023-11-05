@@ -63,9 +63,12 @@ func ExportToken(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error
 	objectType := attribs[1]
 
 	switch objectType.Value[0] {
-	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY, pkcs11.CKO_CERTIFICATE:
-		// Export public Token without wrapping
-		mod.ExportPublicToken(sh, o, uint(algorithmType.Value[0]))
+	case pkcs11.CKO_CERTIFICATE:
+		// Export certificate without wrapping
+		return mod.ExportCertificate(sh, o)
+	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY:
+		// Export public key without wrapping
+		return mod.ExportPublicToken(sh, o, uint(algorithmType.Value[0]))
 	case pkcs11.CKO_PRIVATE_KEY:
 		// Export private key with Symmetric wrapping
 		return fmt.Errorf("private key export unimplemented")
@@ -197,7 +200,7 @@ func FindToken(mod *P11) error {
 		if !ok {
 			return err
 		}
-
+		start := time.Now()
 		switch operation {
 		case "Delete":
 			err = mod.ctx.DestroyObject(sh, oh)
@@ -211,7 +214,8 @@ func FindToken(mod *P11) error {
 		if err != nil {
 			return err
 		}
-		logger.Info(fmt.Sprintf("%q success", operation))
+
+		logger.Info(fmt.Sprintf("%q completed in %dms", operation, time.Since(start).Milliseconds()))
 	}
 }
 

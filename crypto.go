@@ -222,9 +222,27 @@ func (p *P11) GenerateECKeypair(slotID uint, label string, keylength int, extrac
 	return fmt.Errorf("unimplemented method: GenerateECKeypair")
 }
 
+func (p *P11) ExportCertificate(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) error {
+	attr, err := p.ctx.GetAttributeValue(sh, oh, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_VALUE, nil),
+	})
+	if err != nil {
+		return err
+	}
+
+	certificateDER := attr[0].Value
+
+	block := &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certificateDER,
+	}
+	fmt.Print(string(pem.EncodeToMemory(block)))
+
+	return nil
+}
+
 // ExportPublicToken extracts, parses and prints Public Key or Certificate from the HSM
 func (p *P11) ExportPublicToken(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
-
 	switch algorithm {
 	case pkcs11.CKK_RSA:
 		return p.ExportPublicKeyRSA(sh, oh)
