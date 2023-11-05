@@ -1,7 +1,13 @@
 package main
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 
 	"github.com/miekg/pkcs11"
 	"github.com/pterm/pterm"
@@ -214,4 +220,118 @@ func (p *P11) GenerateRSAKeypair(slotID uint, label string, keylength int, extra
 
 func (p *P11) GenerateECKeypair(slotID uint, label string, keylength int, extractable bool) error {
 	return fmt.Errorf("unimplemented method: GenerateECKeypair")
+}
+
+// ExportPublicToken extracts, parses and prints Public Key or Certificate from the HSM
+func (p *P11) ExportPublicToken(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
+
+	switch algorithm {
+	case pkcs11.CKK_RSA:
+		return p.ExportPublicKeyRSA(sh, oh)
+	case pkcs11.CKK_EC:
+		return p.ExportPublicKeyEC(sh, oh)
+	}
+	return nil
+}
+
+// ExportPublicKeyRSA extracts, parses and prints an RSA Public Key from the HSM
+func (p *P11) ExportPublicKeyRSA(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) error {
+	attr, err := p.ctx.GetAttributeValue(sh, oh, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
+		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
+	})
+	if err != nil {
+		return err
+	}
+
+	modulus := attr[0].Value
+	publicExponent := attr[1].Value
+
+	// Create an RSA public key.
+	rsaPublicKey := &rsa.PublicKey{
+		N: new(big.Int).SetBytes(modulus),
+		E: int(new(big.Int).SetBytes(publicExponent).Int64()),
+	}
+
+	// Marshal the RSA public key into PKIX PEM format.
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(rsaPublicKey)
+	if err != nil {
+		return err
+	}
+
+	// Generate a PEM block for the RSA public key.
+	pubKeyPEM := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pubKeyBytes,
+	}
+
+	// Print the PKIX PEM string to the console.
+	fmt.Print(string(pem.EncodeToMemory(pubKeyPEM)))
+
+	return nil
+}
+
+// ExportPublicKeyEC extracts, parses and prints an EC Public Key from the HSM
+func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) error {
+	attr, err := p.ctx.GetAttributeValue(sh, oh, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, nil),
+		pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, nil),
+	})
+	if err != nil {
+		return err
+	}
+
+	ecParams := attr[0].Value
+	curve, err := ECParamsToCurve(ecParams)
+	if err != nil {
+		return err
+	}
+
+	// Create an ECDSA public key.
+	ecPoint := attr[1].Value
+	x, y := elliptic.Unmarshal(curve, ecPoint)
+	ecPublicKey := ecdsa.PublicKey{
+		Curve: curve,
+		X:     x,
+		Y:     y,
+	}
+
+	// Marshal the RSA public key into PKIX PEM format.
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(ecPublicKey)
+	if err != nil {
+		return err
+	}
+
+	// Generate a PEM block for the RSA public key.
+	pubKeyPEM := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pubKeyBytes,
+	}
+
+	// Print the PKIX PEM string to the console.
+	fmt.Print(string(pem.EncodeToMemory(pubKeyPEM)))
+
+	return nil
+}
+
+// ExportSecretKey TODO
+func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
+	switch algorithm {
+	case pkcs11.CKK_AES:
+	case pkcs11.CKK_DES:
+	case pkcs11.CKK_DES2:
+	case pkcs11.CKK_DES3:
+	}
+	return nil
+}
+
+// ExportPrivateKey TODO
+func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
+	switch algorithm {
+	case pkcs11.CKK_RSA:
+		return p.ExportPublicKeyRSA(sh, oh)
+	case pkcs11.CKK_EC:
+		return p.ExportPublicKeyEC(sh, oh)
+	}
+	return nil
 }

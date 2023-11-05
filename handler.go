@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/miekg/pkcs11"
@@ -25,8 +24,58 @@ var (
 		"Delete",
 		"Export",
 		"Info",
+		"Go Back",
 	}
 )
+
+func PrintObjectInfo(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
+	attribs, err := mod.ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
+		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
+		// pkcs11.NewAttribute(pkcs11.CKA_PRIVATE, nil),
+		// pkcs11.NewAttribute(pkcs11.CKA_URL, nil),
+	})
+	if err != nil {
+		return err
+	}
+	logger.Info("",
+		logger.Args("Algorithm", TypeToString(attribs[1].Value)),
+		logger.Args("Type", ClassToString(attribs[2].Value)),
+		logger.Args("Label", "\""+string(attribs[0].Value)+"\""),
+		// logger.Args("Private", attribs[3].Value),
+		// logger.Args("URL", string(attribs[4].Value)),
+		logger.Args("Handle", o),
+	)
+	return nil
+}
+
+func ExportToken(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
+	attribs, err := mod.ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
+		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
+	})
+	if err != nil {
+		return err
+	}
+
+	algorithmType := attribs[0]
+	objectType := attribs[1]
+
+	switch objectType.Value[0] {
+	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY, pkcs11.CKO_CERTIFICATE:
+		// Export public Token without wrapping
+		mod.ExportPublicToken(sh, o, uint(algorithmType.Value[0]))
+	case pkcs11.CKO_PRIVATE_KEY:
+		// Export private key with Symmetric wrapping
+		return fmt.Errorf("private key export unimplemented")
+	case pkcs11.CKO_SECRET_KEY:
+		// export secret key with Asymmetric wrapping
+		return fmt.Errorf("secret key export unimplemented")
+	}
+
+	return nil
+}
 
 func GenerateKey(mod *P11) error {
 
@@ -95,17 +144,17 @@ func FindToken(mod *P11) error {
 
 	err = mod.OpenSession(uint(selectedSlot))
 	if err != nil {
-		return fmt.Errorf("open session error: %s", err)
+		return fmt.Errorf("open session error: %w", err)
 	}
 
 	err = Login(mod, selectedSlot)
 	if err != nil {
-		return err
+		return fmt.Errorf("login error: %w", err)
 	}
 
 	objects, err := mod.FindObjects(selectedSlot, []*pkcs11.Attribute{})
 	if err != nil {
-		return err
+		return fmt.Errorf("find objects error: %w", err)
 	}
 	if len(objects) == 0 {
 		return fmt.Errorf("no objects found")
@@ -117,16 +166,20 @@ func FindToken(mod *P11) error {
 	}
 
 	options := []string{}
+	handleMap := map[string]pkcs11.ObjectHandle{}
 	for _, o := range objects {
-		attribs, _ := mod.ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+		attribs, err := mod.ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
 			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
 			pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
 		})
-		label := string(attribs[0].Value)
-		object_type := TypeToString(attribs[1].Value)
-		class := ClassToString(attribs[2].Value)
-		options = append(options, fmt.Sprintf("%d -> '%s' (%s-%s)", o, label, object_type, class))
+		if err != nil {
+			logger.Error("Failed to read token attributes", logger.Args("handle", o), logger.Args("", err))
+			continue
+		}
+		option := fmt.Sprintf("%d -> '%s' (%s-%s)", o, string(attribs[0].Value), TypeToString(attribs[1].Value), ClassToString(attribs[2].Value))
+		options = append(options, option)
+		handleMap[option] = o
 	}
 
 	selected, err := InteractiveSelect.WithMaxHeight(15).WithOptions(options).Show("Select Key")
@@ -134,21 +187,32 @@ func FindToken(mod *P11) error {
 		return err
 	}
 
-	index := strings.Index(selected, " ->")
-	pterm.Info.Printfln("Selected %s", selected)
-
-	oh, err := strconv.ParseUint(selected[:index], 10, 64)
+	oh, ok := handleMap[selected]
 	if !ok {
-		return err
+		return fmt.Errorf("invalid token selection: %q", selected)
 	}
 
-	operation, err := InteractiveSelect.WithOptions(keyOperations).Show("Select operation")
-	if !ok {
-		return err
-	}
+	for {
+		operation, err := InteractiveSelect.WithOptions(keyOperations).Show("Select operation")
+		if !ok {
+			return err
+		}
 
-	pterm.Info.Printfln("Selected %d-%s on %s", oh, operation, selected)
-	return nil
+		switch operation {
+		case "Delete":
+			err = mod.ctx.DestroyObject(sh, oh)
+		case "Export":
+			err = ExportToken(mod, sh, oh)
+		case "Info":
+			err = PrintObjectInfo(mod, sh, oh)
+		case "Go Back":
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		logger.Info(fmt.Sprintf("%q success", operation))
+	}
 }
 
 func ListSlots(mod *P11) error {
@@ -223,11 +287,14 @@ func ListTokens(mod *P11) error {
 	}
 
 	for _, o := range objects {
-		attribs, _ := mod.ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+		attribs, err := mod.ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
 			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
 			pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
 		})
+		if err != nil {
+			return err
+		}
 		logger.Info("",
 			logger.Args("Algorithm", TypeToString(attribs[1].Value)),
 			logger.Args("Type", ClassToString(attribs[2].Value)),
