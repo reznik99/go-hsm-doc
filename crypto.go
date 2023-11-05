@@ -241,8 +241,8 @@ func (p *P11) ExportCertificate(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 	return nil
 }
 
-// ExportPublicToken extracts, parses and prints Public Key or Certificate from the HSM
-func (p *P11) ExportPublicToken(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
+// ExportPublicKey extracts, parses and prints Public Key or Certificate from the HSM
+func (p *P11) ExportPublicKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
 	switch algorithm {
 	case pkcs11.CKK_RSA:
 		return p.ExportPublicKeyRSA(sh, oh)
@@ -262,13 +262,10 @@ func (p *P11) ExportPublicKeyRSA(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle
 		return err
 	}
 
-	modulus := attr[0].Value
-	publicExponent := attr[1].Value
-
 	// Create an RSA public key.
 	rsaPublicKey := &rsa.PublicKey{
-		N: new(big.Int).SetBytes(modulus),
-		E: int(new(big.Int).SetBytes(publicExponent).Int64()),
+		N: new(big.Int).SetBytes(attr[0].Value),
+		E: int(new(big.Int).SetBytes(attr[1].Value).Int64()),
 	}
 
 	// Marshal the RSA public key into PKIX PEM format.
@@ -299,15 +296,13 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 		return err
 	}
 
-	ecParams := attr[0].Value
-	curve, err := ECParamsToCurve(ecParams)
+	curve, err := ECParamsToCurve(attr[0].Value)
 	if err != nil {
 		return err
 	}
 
 	// Create an ECDSA public key.
-	ecPoint := attr[1].Value
-	x, y := elliptic.Unmarshal(curve, ecPoint)
+	x, y := elliptic.Unmarshal(curve, attr[1].Value)
 	ecPublicKey := ecdsa.PublicKey{
 		Curve: curve,
 		X:     x,
@@ -336,9 +331,13 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
 	switch algorithm {
 	case pkcs11.CKK_AES:
+		return fmt.Errorf("secret key export unimplemented")
 	case pkcs11.CKK_DES:
+		return fmt.Errorf("secret key export unimplemented")
 	case pkcs11.CKK_DES2:
+		return fmt.Errorf("secret key export unimplemented")
 	case pkcs11.CKK_DES3:
+		return fmt.Errorf("secret key export unimplemented")
 	}
 	return nil
 }
@@ -347,9 +346,9 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, a
 func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
 	switch algorithm {
 	case pkcs11.CKK_RSA:
-		return p.ExportPublicKeyRSA(sh, oh)
+		return fmt.Errorf("private key export unimplemented")
 	case pkcs11.CKK_EC:
-		return p.ExportPublicKeyEC(sh, oh)
+		return fmt.Errorf("private key export unimplemented")
 	}
 	return nil
 }

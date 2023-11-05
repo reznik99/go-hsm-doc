@@ -21,10 +21,10 @@ var (
 	}
 	algorithms    = []string{"RSA", "EC", "AES", "3DES", "DES"}
 	keyOperations = []string{
-		"Delete",
-		"Export",
-		"Info",
 		"Go Back",
+		"Info",
+		"Export",
+		"Delete",
 	}
 )
 
@@ -40,9 +40,9 @@ func PrintObjectInfo(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) e
 		return err
 	}
 	logger.Info("",
-		logger.Args("Algorithm", TypeToString(attribs[1].Value)),
-		logger.Args("Type", ClassToString(attribs[2].Value)),
-		logger.Args("Label", "\""+string(attribs[0].Value)+"\""),
+		logger.Args("Algorithm", AttributeToString(attribs[1])),
+		logger.Args("Type", AttributeToString(attribs[2])),
+		logger.Args("Label", AttributeToString(attribs[0])),
 		// logger.Args("Private", attribs[3].Value),
 		// logger.Args("URL", string(attribs[4].Value)),
 		logger.Args("Handle", o),
@@ -59,22 +59,18 @@ func ExportToken(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error
 		return err
 	}
 
-	algorithmType := attribs[0]
-	objectType := attribs[1]
+	algorithmType := attribs[0].Value[0]
+	objectType := attribs[1].Value[0]
 
-	switch objectType.Value[0] {
-	case pkcs11.CKO_CERTIFICATE:
-		// Export certificate without wrapping
+	switch objectType {
+	case pkcs11.CKO_CERTIFICATE: // Export certificate without wrapping
 		return mod.ExportCertificate(sh, o)
-	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY:
-		// Export public key without wrapping
-		return mod.ExportPublicToken(sh, o, uint(algorithmType.Value[0]))
-	case pkcs11.CKO_PRIVATE_KEY:
-		// Export private key with Symmetric wrapping
-		return fmt.Errorf("private key export unimplemented")
-	case pkcs11.CKO_SECRET_KEY:
-		// export secret key with Asymmetric wrapping
-		return fmt.Errorf("secret key export unimplemented")
+	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY: // Export public key without wrapping
+		return mod.ExportPublicKey(sh, o, uint(algorithmType))
+	case pkcs11.CKO_PRIVATE_KEY: // Export private key with Symmetric wrapping
+		return mod.ExportPrivateKey(sh, o, uint(algorithmType))
+	case pkcs11.CKO_SECRET_KEY: // export secret key with Asymmetric wrapping
+		return mod.ExportSecretKey(sh, o, uint(algorithmType))
 	}
 
 	return nil
@@ -180,7 +176,7 @@ func FindToken(mod *P11) error {
 			logger.Error("Failed to read token attributes", logger.Args("handle", o), logger.Args("", err))
 			continue
 		}
-		option := fmt.Sprintf("%d -> '%s' (%s-%s)", o, string(attribs[0].Value), TypeToString(attribs[1].Value), ClassToString(attribs[2].Value))
+		option := fmt.Sprintf("%d -> %s (%s-%s)", o, AttributeToString(attribs[0]), AttributeToString(attribs[1]), AttributeToString(attribs[2]))
 		options = append(options, option)
 		handleMap[option] = o
 	}
@@ -202,14 +198,14 @@ func FindToken(mod *P11) error {
 		}
 		start := time.Now()
 		switch operation {
-		case "Delete":
-			err = mod.ctx.DestroyObject(sh, oh)
-		case "Export":
-			err = ExportToken(mod, sh, oh)
-		case "Info":
-			err = PrintObjectInfo(mod, sh, oh)
 		case "Go Back":
 			return nil
+		case "Info":
+			err = PrintObjectInfo(mod, sh, oh)
+		case "Export":
+			err = ExportToken(mod, sh, oh)
+		case "Delete":
+			err = mod.ctx.DestroyObject(sh, oh)
 		}
 		if err != nil {
 			return err
@@ -300,9 +296,9 @@ func ListTokens(mod *P11) error {
 			return err
 		}
 		logger.Info("",
-			logger.Args("Algorithm", TypeToString(attribs[1].Value)),
-			logger.Args("Type", ClassToString(attribs[2].Value)),
-			logger.Args("Label", string(attribs[0].Value)),
+			logger.Args("Algorithm", AttributeToString(attribs[1])),
+			logger.Args("Type", AttributeToString(attribs[2])),
+			logger.Args("Label", AttributeToString(attribs[0])),
 			logger.Args("Handle", o),
 		)
 	}
