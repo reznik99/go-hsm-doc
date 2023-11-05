@@ -15,24 +15,40 @@
   </p>
 </div>
 
-[![CLI Screenshot][screenshot]](https://crypto.francescogorini.com)
+[![CLI Screenshot][cli]](https://crypto.francescogorini.com)
 
 
 ### Functionality
 
-1. Print HSM and Token information
+1. Print HSM and Token information  
+[![CLI Screenshot][hsm_info]](https://crypto.francescogorini.com)  
 
-2. List Slots and Tokens inside HSM
+2. List Slots inside HSM  
+[![CLI Screenshot][slot_list]](https://crypto.francescogorini.com)  
 
-3. Find Tokens/Keys
+3. List Tokens inside HSM  
+[![CLI Screenshot][token_list]](https://crypto.francescogorini.com)  
 
-4. Delete Tokens/Keys
+4. Find Tokens/Keys  
+[![CLI Screenshot][find_token]](https://crypto.francescogorini.com)  
 
-5. Export Tokens/Keys
+5. Delete Tokens/Keys  
+[![CLI Screenshot][delete_token]](https://crypto.francescogorini.com)  
 
-6. Generate Tokens/Keys
+6. Export Tokens/Keys  
+[![CLI Screenshot][export_token]](https://crypto.francescogorini.com)  
+
+7. Generate Tokens/Keys  
+[![CLI Screenshot][generate_keys]](https://crypto.francescogorini.com)  
 
 
 
 <!-- LINKS -->
-[screenshot]: res/cli.png
+[cli]: res/cli.png
+[hsm_info]: res/hsm-info.png
+[slot_list]: res/list-slots.png
+[token_list]: res/list-tokens.png
+[find_token]: res/find-token.png
+[delete_token]: res/delete-token.png
+[export_token]: res/export-token.png
+[generate_keys]: res/generate-keys.png
