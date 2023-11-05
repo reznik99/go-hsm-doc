@@ -15,8 +15,24 @@
   </p>
 </div>
 
-
 [![CLI Screenshot][screenshot]](https://crypto.francescogorini.com)
+
+
+### Functionality
+
+1. Print HSM and Token information
+
+2. List Slots and Tokens inside HSM
+
+3. Find Tokens/Keys
+
+4. Delete Tokens/Keys
+
+5. Export Tokens/Keys
+
+6. Generate Tokens/Keys
+
+
 
 <!-- LINKS -->
 [screenshot]: res/cli.png

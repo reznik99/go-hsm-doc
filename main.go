@@ -31,7 +31,7 @@ func fatal(message string, args ...any) {
 func PrintTitle() {
 	pterm.Info.Println("\033[H\033[2J")
 	pterm.DefaultBigText.WithLetters(TitlePrefix, Title).Render()
-	pterm.Info.Println("Version 0.0.1")
+	pterm.Info.Println("Version 0.0.2")
 }
 
 func PressEnterToContinue() {
