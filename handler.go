@@ -47,30 +47,36 @@ func PrintObjectInfo(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) e
 	return nil
 }
 
-func ExportToken(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
+func ExportToken(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byte, error) {
 	attribs, err := mod.ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	algorithmType := binary.LittleEndian.Uint32(attribs[0].Value)
 	objectType := binary.LittleEndian.Uint32(attribs[1].Value)
 
+	var token []byte
 	switch objectType {
 	case pkcs11.CKO_CERTIFICATE:
-		return mod.ExportCertificate(sh, o) // Export certificate without wrapping
+		token, err = mod.ExportCertificate(sh, o)
+		fmt.Printf("%s\n", token)
 	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY:
-		return mod.ExportPublicKey(sh, o, algorithmType) // Export public key without wrapping
+		token, err = mod.ExportPublicKey(sh, o, algorithmType)
+		fmt.Printf("%s\n", token)
 	case pkcs11.CKO_PRIVATE_KEY:
-		return mod.ExportPrivateKey(sh, o, algorithmType) // Export private key with Symmetric wrapping
+		token, err = mod.ExportPrivateKey(sh, o, algorithmType)
+		fmt.Printf("%s\n", token)
 	case pkcs11.CKO_SECRET_KEY:
-		return mod.ExportSecretKey(sh, o, algorithmType) // export secret key with Asymmetric wrapping
+		token, err = mod.ExportSecretKey(sh, o, algorithmType)
+		fmt.Printf("%X\n", token)
+	default:
+		return nil, fmt.Errorf("unrecognized object type: %d", objectType)
 	}
-
-	return nil
+	return token, err
 }
 
 func GenerateKey(mod *P11) error {
@@ -114,16 +120,20 @@ func GenerateKey(mod *P11) error {
 	}
 
 	start := time.Now()
+	sh, ok := mod.sessions[selectedSlot]
+	if !ok {
+		return fmt.Errorf("session doesn't exist for slot: %d", selectedSlot)
+	}
 
 	switch algorithm {
 	case "RSA":
-		err = mod.GenerateRSAKeypair(selectedSlot, keyLabel, length, extractable)
+		_, err = mod.GenerateRSAKeypair(sh, keyLabel, length, extractable, false)
 	case "EC":
-		err = mod.GenerateECKeypair(selectedSlot, keyLabel, length, extractable)
+		_, err = mod.GenerateECKeypair(sh, keyLabel, length, extractable, false)
 	case "AES":
-		err = mod.GenerateAESKey(selectedSlot, keyLabel, length, extractable)
+		_, err = mod.GenerateAESKey(sh, keyLabel, length, extractable, false)
 	case "DES", "3DES":
-		err = mod.GenerateDESKey(selectedSlot, keyLabel, length, extractable)
+		_, err = mod.GenerateDESKey(sh, keyLabel, length, extractable, false)
 	default:
 		err = fmt.Errorf("unrecognized algorithm %s", algorithm)
 	}
@@ -209,7 +219,7 @@ func FindToken(mod *P11) error {
 		case "Info":
 			err = PrintObjectInfo(mod, sh, oh)
 		case "Export":
-			err = ExportToken(mod, sh, oh)
+			_, err = ExportToken(mod, sh, oh)
 		case "Delete":
 			err = mod.ctx.DestroyObject(sh, oh)
 		}

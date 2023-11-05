@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -11,6 +13,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/miekg/pkcs11"
 	"github.com/pterm/pterm"
@@ -123,19 +126,14 @@ func (p *P11) Finalize() error {
 	return nil
 }
 
-func (p *P11) GenerateAESKey(slotID uint, label string, keylength int, extractable bool) error {
-	sh, ok := p.sessions[slotID]
-	if !ok {
-		return fmt.Errorf("session doesn't exist for slot: %d", slotID)
-	}
-
+func (p *P11) GenerateAESKey(sh pkcs11.SessionHandle, label string, keylength int, extractable, ephemeral bool) (pkcs11.ObjectHandle, error) {
 	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_GEN, nil)}
 	temp := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_SECRET_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_AES),
 		pkcs11.NewAttribute(pkcs11.CKA_VALUE_LEN, keylength/8),
-		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
+		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, !ephemeral),
 		pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
 		pkcs11.NewAttribute(pkcs11.CKA_ENCRYPT, true),
 		pkcs11.NewAttribute(pkcs11.CKA_DECRYPT, true),
@@ -144,21 +142,14 @@ func (p *P11) GenerateAESKey(slotID uint, label string, keylength int, extractab
 		pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, extractable),
 	}
 
-	_, err := p.ctx.GenerateKey(sh, mech, temp)
-
-	return err
+	return p.ctx.GenerateKey(sh, mech, temp)
 }
 
-func (p *P11) GenerateDESKey(slotID uint, label string, keylength int, extractable bool) error {
-	sh, ok := p.sessions[slotID]
-	if !ok {
-		return fmt.Errorf("session doesn't exist for slot: %d", slotID)
-	}
-
+func (p *P11) GenerateDESKey(sh pkcs11.SessionHandle, label string, keylength int, extractable, ephemeral bool) (pkcs11.ObjectHandle, error) {
 	temp := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_SECRET_KEY),
-		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
+		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, !ephemeral),
 		pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
 		pkcs11.NewAttribute(pkcs11.CKA_ENCRYPT, true),
 		pkcs11.NewAttribute(pkcs11.CKA_DECRYPT, true),
@@ -181,24 +172,17 @@ func (p *P11) GenerateDESKey(slotID uint, label string, keylength int, extractab
 		temp = append(temp, pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_DES3))
 	}
 
-	_, err := p.ctx.GenerateKey(sh, mech, temp)
-
-	return err
+	return p.ctx.GenerateKey(sh, mech, temp)
 }
 
-func (p *P11) GenerateRSAKeypair(slotID uint, label string, keylength int, extractable bool) error {
-	sh, ok := p.sessions[slotID]
-	if !ok {
-		return fmt.Errorf("session doesn't exist for slot: %d", slotID)
-	}
-
+func (p *P11) GenerateRSAKeypair(sh pkcs11.SessionHandle, label string, keylength int, extractable, ephemeral bool) (pkcs11.ObjectHandle, error) {
 	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN, nil)}
 	public := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_RSA),
 		pkcs11.NewAttribute(pkcs11.CKA_MODULUS_BITS, keylength),
-		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
+		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, !ephemeral),
 		pkcs11.NewAttribute(pkcs11.CKA_VERIFY, true),
 		pkcs11.NewAttribute(pkcs11.CKA_ENCRYPT, true),
 		pkcs11.NewAttribute(pkcs11.CKA_WRAP, true),
@@ -207,7 +191,7 @@ func (p *P11) GenerateRSAKeypair(slotID uint, label string, keylength int, extra
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_RSA),
-		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, true),
+		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, !ephemeral),
 		pkcs11.NewAttribute(pkcs11.CKA_SIGN, true),
 		pkcs11.NewAttribute(pkcs11.CKA_DECRYPT, true),
 		pkcs11.NewAttribute(pkcs11.CKA_UNWRAP, true),
@@ -216,21 +200,20 @@ func (p *P11) GenerateRSAKeypair(slotID uint, label string, keylength int, extra
 		pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, extractable),
 	}
 
-	_, _, err := p.ctx.GenerateKeyPair(sh, mech, public, private)
-
-	return err
+	_, priv, err := p.ctx.GenerateKeyPair(sh, mech, public, private)
+	return priv, err
 }
 
-func (p *P11) GenerateECKeypair(slotID uint, label string, keylength int, extractable bool) error {
-	return fmt.Errorf("unimplemented method: GenerateECKeypair")
+func (p *P11) GenerateECKeypair(sh pkcs11.SessionHandle, label string, keylength int, extractable, ephemeral bool) (pkcs11.ObjectHandle, error) {
+	return pkcs11.ObjectHandle(0), fmt.Errorf("unimplemented method: GenerateECKeypair")
 }
 
-func (p *P11) ExportCertificate(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) error {
+func (p *P11) ExportCertificate(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) ([]byte, error) {
 	attr, err := p.ctx.GetAttributeValue(sh, oh, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_VALUE, nil),
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	certificateDER := attr[0].Value
@@ -239,30 +222,30 @@ func (p *P11) ExportCertificate(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 		Type:  "CERTIFICATE",
 		Bytes: certificateDER,
 	}
-	fmt.Print(string(pem.EncodeToMemory(block)))
 
-	return nil
+	return pem.EncodeToMemory(block), nil
 }
 
 // ExportPublicKey extracts, parses and prints Public Key or Certificate from the HSM
-func (p *P11) ExportPublicKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) error {
+func (p *P11) ExportPublicKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) ([]byte, error) {
 	switch algorithm {
 	case pkcs11.CKK_RSA:
 		return p.ExportPublicKeyRSA(sh, oh)
 	case pkcs11.CKK_EC:
 		return p.ExportPublicKeyEC(sh, oh)
+	default:
+		return nil, fmt.Errorf("unrecognized algorithm: %d", algorithm)
 	}
-	return nil
 }
 
 // ExportPublicKeyRSA extracts, parses and prints an RSA Public Key from the HSM
-func (p *P11) ExportPublicKeyRSA(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) error {
+func (p *P11) ExportPublicKeyRSA(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) ([]byte, error) {
 	attr, err := p.ctx.GetAttributeValue(sh, oh, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_MODULUS, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, nil),
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Create an RSA public key.
@@ -274,7 +257,7 @@ func (p *P11) ExportPublicKeyRSA(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle
 	// Marshal the RSA public key into PKIX PEM format.
 	pubKeyBytes, err := x509.MarshalPKIXPublicKey(rsaPublicKey)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Generate a PEM block for the RSA public key.
@@ -283,25 +266,22 @@ func (p *P11) ExportPublicKeyRSA(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle
 		Bytes: pubKeyBytes,
 	}
 
-	// Print the PKIX PEM string to the console.
-	fmt.Print(string(pem.EncodeToMemory(pubKeyPEM)))
-
-	return nil
+	return pem.EncodeToMemory(pubKeyPEM), nil
 }
 
 // ExportPublicKeyEC extracts, parses and prints an EC Public Key from the HSM
-func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) error {
+func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) ([]byte, error) {
 	attr, err := p.ctx.GetAttributeValue(sh, oh, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_EC_PARAMS, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_EC_POINT, nil),
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	curve, err := ECParamsToCurve(attr[0].Value)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Create an ECDSA public key.
@@ -315,7 +295,7 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 	// Marshal the RSA public key into PKIX PEM format.
 	pubKeyBytes, err := x509.MarshalPKIXPublicKey(ecPublicKey)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Generate a PEM block for the RSA public key.
@@ -324,22 +304,19 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 		Bytes: pubKeyBytes,
 	}
 
-	// Print the PKIX PEM string to the console.
-	fmt.Print(string(pem.EncodeToMemory(pubKeyPEM)))
-
-	return nil
+	return pem.EncodeToMemory(pubKeyPEM), nil
 }
 
-// ExportSecretKey exports an AES/DES/3DES key using an ephemeral RSA_OAEP wrapping key.
-func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) error {
+// ExportSecretKey extracts, parses and prints an AES/DES/3DES key using an ephemeral RSA_OAEP wrapping key.
+func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) ([]byte, error) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	wrapKey, err := p.ImportPublicKey(sh, priv.PublicKey)
 	if err != nil {
-		return fmt.Errorf("wrapping key import error: %w", err)
+		return nil, fmt.Errorf("wrapping key import error: %w", err)
 	}
 
 	// Wrap AES key with imported wrapping key
@@ -347,30 +324,57 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, a
 	wrapMech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_OAEP, wrapParam)}
 	wrappedKey, err := p.ctx.WrapKey(sh, wrapMech, wrapKey, oh)
 	if err != nil {
-		return fmt.Errorf("wrapping error: %w", err)
+		return nil, fmt.Errorf("wrapping error: %w", err)
 	}
 
 	// Unwrap key
-	unwrappedKey, err := rsa.DecryptOAEP(sha1.New(), rand.Reader, priv, wrappedKey, nil)
-	if err != nil {
-		return fmt.Errorf("unwrapping error: %w", err)
-	}
-
-	// Print the Raw AES hex string to the console.
-	fmt.Printf("%X\n", unwrappedKey)
-
-	return nil
+	return rsa.DecryptOAEP(sha1.New(), rand.Reader, priv, wrappedKey, nil)
 }
 
 // ExportPrivateKey TODO
-func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) error {
+func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) ([]byte, error) {
 	switch algorithm {
 	case pkcs11.CKK_RSA:
-		return fmt.Errorf("private key export unimplemented")
+		// Generate Ephemeral AES KEK
+		wrapKey, err := p.GenerateAESKey(sh, time.Now().String(), 256, true, true)
+		if err != nil {
+			return nil, err
+		}
+
+		// Wrap Private Key
+		// Generate a random 16-byte IV (Initialization Vector)
+		iv := make([]byte, aes.BlockSize)
+		if _, err := rand.Read(iv); err != nil {
+			return nil, err
+		}
+
+		mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_CBC_PAD, iv)}
+		wrappedKey, err := p.ctx.WrapKey(sh, mech, wrapKey, oh)
+		if err != nil {
+			return nil, err
+		}
+
+		// Extract AES KEK
+		wrappingKey, err := p.ExportSecretKey(sh, wrapKey, 0)
+		if err != nil {
+			return nil, err
+		}
+
+		// Unwrap Private Key
+		block, err := aes.NewCipher(wrappingKey)
+		if err != nil {
+			return nil, err
+		}
+
+		decrypter := cipher.NewCBCDecrypter(block, iv)
+		key := make([]byte, len(wrappedKey))
+		decrypter.CryptBlocks(key, wrappedKey)
+
+		return key, nil
 	case pkcs11.CKK_EC:
-		return fmt.Errorf("private key export unimplemented")
+		return nil, fmt.Errorf("private key export unimplemented")
 	}
-	return nil
+	return nil, nil
 }
 
 // ImportPublicKey imports a public key into the hsm without wrapping
