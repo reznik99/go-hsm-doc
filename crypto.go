@@ -242,7 +242,7 @@ func (p *P11) ExportCertificate(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 }
 
 // ExportPublicKey extracts, parses and prints Public Key or Certificate from the HSM
-func (p *P11) ExportPublicKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
+func (p *P11) ExportPublicKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) error {
 	switch algorithm {
 	case pkcs11.CKK_RSA:
 		return p.ExportPublicKeyRSA(sh, oh)
@@ -328,7 +328,7 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 }
 
 // ExportSecretKey TODO
-func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
+func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) error {
 	switch algorithm {
 	case pkcs11.CKK_AES:
 		return fmt.Errorf("secret key export unimplemented")
@@ -343,7 +343,7 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, a
 }
 
 // ExportPrivateKey TODO
-func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) error {
+func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) error {
 	switch algorithm {
 	case pkcs11.CKK_RSA:
 		return fmt.Errorf("private key export unimplemented")

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -33,8 +34,6 @@ func PrintObjectInfo(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) e
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
-		// pkcs11.NewAttribute(pkcs11.CKA_PRIVATE, nil),
-		// pkcs11.NewAttribute(pkcs11.CKA_URL, nil),
 	})
 	if err != nil {
 		return err
@@ -43,8 +42,6 @@ func PrintObjectInfo(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) e
 		logger.Args("Algorithm", AttributeToString(attribs[1])),
 		logger.Args("Type", AttributeToString(attribs[2])),
 		logger.Args("Label", AttributeToString(attribs[0])),
-		// logger.Args("Private", attribs[3].Value),
-		// logger.Args("URL", string(attribs[4].Value)),
 		logger.Args("Handle", o),
 	)
 	return nil
@@ -59,18 +56,18 @@ func ExportToken(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error
 		return err
 	}
 
-	algorithmType := attribs[0].Value[0]
-	objectType := attribs[1].Value[0]
+	algorithmType := binary.LittleEndian.Uint32(attribs[0].Value)
+	objectType := binary.LittleEndian.Uint32(attribs[1].Value)
 
 	switch objectType {
 	case pkcs11.CKO_CERTIFICATE: // Export certificate without wrapping
 		return mod.ExportCertificate(sh, o)
 	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY: // Export public key without wrapping
-		return mod.ExportPublicKey(sh, o, uint(algorithmType))
+		return mod.ExportPublicKey(sh, o, algorithmType)
 	case pkcs11.CKO_PRIVATE_KEY: // Export private key with Symmetric wrapping
-		return mod.ExportPrivateKey(sh, o, uint(algorithmType))
+		return mod.ExportPrivateKey(sh, o, algorithmType)
 	case pkcs11.CKO_SECRET_KEY: // export secret key with Asymmetric wrapping
-		return mod.ExportSecretKey(sh, o, uint(algorithmType))
+		return mod.ExportSecretKey(sh, o, algorithmType)
 	}
 
 	return nil
@@ -176,7 +173,11 @@ func FindToken(mod *P11) error {
 			logger.Error("Failed to read token attributes", logger.Args("handle", o), logger.Args("", err))
 			continue
 		}
-		option := fmt.Sprintf("%d -> %s (%s-%s)", o, AttributeToString(attribs[0]), AttributeToString(attribs[1]), AttributeToString(attribs[2]))
+		option := fmt.Sprintf("[%d]%s -> (%s-%s)", o,
+			AttributeToString(attribs[0]),
+			AttributeToString(attribs[1]),
+			AttributeToString(attribs[2]),
+		)
 		options = append(options, option)
 		handleMap[option] = o
 	}
