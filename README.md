@@ -4,7 +4,7 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/reznik99/go-dcc">
+  <a href="https://github.com/reznik99/go-hsm-doc">
     <img src="https://cdn.icon-icons.com/icons2/2699/PNG/512/golang_logo_icon_171073.png" alt="Logo" width="80" height="80">
   </a>
 
@@ -13,12 +13,12 @@
   <p align="center">
     A simple CLI Tool to view, inspect and debug PKCS11 compliant Hardware and Software HSMs.
   </p>
+
+  ![CLI Screenshot][cli]  
+
 </div>
 
-[![CLI Screenshot][cli]]
-
-
-### Functionality
+### Functionality  
 
 1. Print HSM and Token information  
 ![CLI Screenshot][hsm_info]  
