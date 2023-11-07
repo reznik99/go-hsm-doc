@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/aes"
-	"crypto/cipher"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -16,6 +15,7 @@ import (
 	"time"
 
 	"github.com/miekg/pkcs11"
+	keywrap "github.com/nickball/go-aes-key-wrap"
 	"github.com/pterm/pterm"
 )
 
@@ -318,6 +318,7 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, a
 	if err != nil {
 		return nil, fmt.Errorf("wrapping key import error: %w", err)
 	}
+	defer p.ctx.DestroyObject(sh, wrapKey)
 
 	// Wrap AES key with imported wrapping key
 	wrapParam := pkcs11.NewOAEPParams(pkcs11.CKM_SHA_1, pkcs11.CKG_MGF1_SHA1, pkcs11.CKZ_DATA_SPECIFIED, nil)
@@ -331,57 +332,62 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, a
 	return rsa.DecryptOAEP(sha1.New(), rand.Reader, priv, wrappedKey, nil)
 }
 
-// ExportPrivateKey TODO
+// ExportPrivateKey extracts, parses and prints an RSA/EC key using an ephemeral AES wrapping key.
 func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) ([]byte, error) {
+
+	// Generate Ephemeral AES KEK
+	wrapKeyName := fmt.Sprintf("KEK-%s", time.Now().Format(time.DateTime))
+	wrapKey, err := p.GenerateAESKey(sh, wrapKeyName, 256, true, true)
+	if err != nil {
+		return nil, err
+	}
+	defer p.ctx.DestroyObject(sh, wrapKey)
+
+	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_WRAP, nil)}
+	wrappedKey, err := p.ctx.WrapKey(sh, mech, wrapKey, oh)
+	if err != nil {
+		return nil, err
+	}
+
+	// Extract AES KEK
+	wrappingKey, err := p.ExportSecretKey(sh, wrapKey, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	// Unwrap Private Key
+	block, err := aes.NewCipher(wrappingKey)
+	if err != nil {
+		return nil, err
+	}
+
+	key, err := keywrap.Unwrap(block, wrappedKey)
+	if err != nil {
+		return nil, err
+	}
+
 	switch algorithm {
 	case pkcs11.CKK_RSA:
-		// Generate Ephemeral AES KEK
-		wrapKey, err := p.GenerateAESKey(sh, time.Now().String(), 256, true, true)
-		if err != nil {
-			return nil, err
-		}
-
-		// Wrap Private Key
-		// Generate a random 16-byte IV (Initialization Vector)
-		iv := make([]byte, aes.BlockSize)
-		if _, err := rand.Read(iv); err != nil {
-			return nil, err
-		}
-
-		mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_CBC_PAD, iv)}
-		wrappedKey, err := p.ctx.WrapKey(sh, mech, wrapKey, oh)
-		if err != nil {
-			return nil, err
-		}
-
-		// Extract AES KEK
-		wrappingKey, err := p.ExportSecretKey(sh, wrapKey, 0)
-		if err != nil {
-			return nil, err
-		}
-
-		// Unwrap Private Key
-		block, err := aes.NewCipher(wrappingKey)
-		if err != nil {
-			return nil, err
-		}
-
-		decrypter := cipher.NewCBCDecrypter(block, iv)
-		key := make([]byte, len(wrappedKey))
-		decrypter.CryptBlocks(key, wrappedKey)
-
-		return key, nil
+		keyPem := pem.EncodeToMemory(&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: key,
+		})
+		return keyPem, err
 	case pkcs11.CKK_EC:
-		return nil, fmt.Errorf("private key export unimplemented")
+		keyPem := pem.EncodeToMemory(&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: key,
+		})
+		return keyPem, err
+	default:
+		return nil, fmt.Errorf("unrecognized algorithm: %s", AttributeToString(pkcs11.NewAttribute(uint(algorithm), nil)))
 	}
-	return nil, nil
 }
 
 // ImportPublicKey imports a public key into the hsm without wrapping
 func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any) (pkcs11.ObjectHandle, error) {
 	switch publicKey := pub.(type) {
 	case rsa.PublicKey:
-		// Import public key into HSM
 		// Allow for 128-bit integer for future-proofing
 		exponent := make([]byte, 8)
 		binary.BigEndian.PutUint64(exponent, uint64(publicKey.E))
