@@ -15,7 +15,7 @@ import (
 var (
 	keyLengths = map[string][]string{
 		"RSA":  {"1024", "2048", "4096"},
-		"EC":   {"256", "384", "512"},
+		"EC":   {"P224", "P256", "P384", "P512"},
 		"AES":  {"128", "192", "256"},
 		"3DES": {"128", "192"},
 		"DES":  {"64"},
@@ -94,11 +94,11 @@ func GenerateKey(mod *P11) error {
 	}
 
 	// Select Key length
-	keyLength, err := InteractiveSelect.WithOptions(keyLengths[algorithm]).Show("Select Keylength")
+	lengthOrCurve, err := InteractiveSelect.WithOptions(keyLengths[algorithm]).Show("Select Keylength")
 	if err != nil {
 		return err
 	}
-	length, _ := strconv.Atoi(keyLength)
+	length, _ := strconv.Atoi(lengthOrCurve)
 
 	// Select Key Label for key
 	keyLabel, err := InteractiveText.Show("Key Label")
@@ -129,10 +129,10 @@ func GenerateKey(mod *P11) error {
 	case "RSA":
 		_, err = mod.GenerateRSAKeypair(sh, keyLabel, length, extractable, false)
 	case "EC":
-		_, err = mod.GenerateECKeypair(sh, keyLabel, length, extractable, false)
+		_, err = mod.GenerateECKeypair(sh, keyLabel, lengthOrCurve, extractable, false)
 	case "AES":
 		_, err = mod.GenerateAESKey(sh, keyLabel, length, extractable, false)
-	case "DES", "3DES":
+	case "DES", "2DES", "3DES":
 		_, err = mod.GenerateDESKey(sh, keyLabel, length, extractable, false)
 	default:
 		err = fmt.Errorf("unrecognized algorithm %s", algorithm)
@@ -141,7 +141,7 @@ func GenerateKey(mod *P11) error {
 		return err
 	}
 
-	pterm.Info.Printfln("Command completed in %dms", time.Since(start).Milliseconds())
+	pterm.Info.Printfln("Generated Key\\s in %dms", time.Since(start).Milliseconds())
 
 	return nil
 }

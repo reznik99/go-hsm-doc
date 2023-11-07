@@ -64,8 +64,8 @@ func AttributeToString(attribute *pkcs11.Attribute) string {
 	return "N/A"
 }
 
-// StringToCurve converts a curve name to a elliptic.Curve for HSM ECC PublicKey extraction
-func StringToCurve(curveName string) (curve elliptic.Curve, err error) {
+// CurveNameToCurve converts a curve name to a elliptic.Curve for HSM ECC PublicKey extraction
+func CurveNameToCurve(curveName string) (curve elliptic.Curve, err error) {
 	switch strings.ToLower(curveName) {
 	case "p224", "p-224":
 		curve = elliptic.P224()
@@ -97,6 +97,23 @@ func OidToCurveName(curve asn1.ObjectIdentifier) (name string, err error) {
 	}
 }
 
+// CurveNameToOid converts a named curve to a ObjectIdentifier
+func CurveNameToOid(curveName string) (curve asn1.ObjectIdentifier, err error) {
+	switch strings.ToLower(curveName) {
+	case "p224", "p-224":
+		curve = P224oid
+	case "p256", "p-256":
+		curve = P256oid
+	case "p384", "p-384":
+		curve = P384oid
+	case "p521", "p-521":
+		curve = P521oid
+	default:
+		err = fmt.Errorf("input string does not match known curve")
+	}
+	return
+}
+
 // ECParamsToCurve converts ecParam bytes (from the HSM) into a golang curve obj
 func ECParamsToCurve(ecParams []byte) (elliptic.Curve, error) {
 	params := &asn1.ObjectIdentifier{}
@@ -109,10 +126,19 @@ func ECParamsToCurve(ecParams []byte) (elliptic.Curve, error) {
 		return nil, err
 	}
 
-	curve, err := StringToCurve(curveName)
+	curve, err := CurveNameToCurve(curveName)
 	if err != nil {
 		return nil, err
 	}
 
 	return curve, nil
+}
+
+// CurveNameToECParams converts a named curve into ecParam bytes
+func CurveNameToECParams(curveName string) ([]byte, error) {
+	curveOID, err := CurveNameToOid(curveName)
+	if err != nil {
+		return nil, err
+	}
+	return asn1.Marshal(curveOID)
 }
