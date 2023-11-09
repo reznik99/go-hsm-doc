@@ -68,10 +68,10 @@ func ExportToken(mod *P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]by
 		token, err = mod.ExportPublicKey(sh, o, algorithmType)
 		fmt.Printf("%s\n", token)
 	case pkcs11.CKO_PRIVATE_KEY:
-		token, err = mod.ExportPrivateKey(sh, o, algorithmType)
+		token, err = mod.ExportPrivateKey(sh, o)
 		fmt.Printf("%s\n", token)
 	case pkcs11.CKO_SECRET_KEY:
-		token, err = mod.ExportSecretKey(sh, o, algorithmType)
+		token, err = mod.ExportSecretKey(sh, o)
 		fmt.Printf("%X\n", token)
 	default:
 		return nil, fmt.Errorf("unrecognized object type: %d", objectType)

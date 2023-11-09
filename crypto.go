@@ -370,7 +370,7 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 }
 
 // ExportSecretKey extracts, parses and prints an AES/DES/3DES key using an ephemeral RSA_OAEP wrapping key.
-func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) ([]byte, error) {
+func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) ([]byte, error) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, err
@@ -395,7 +395,7 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, a
 }
 
 // ExportPrivateKey extracts, parses and prints an RSA/EC key using an ephemeral AES wrapping key.
-func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) ([]byte, error) {
+func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) ([]byte, error) {
 
 	// Generate Ephemeral AES KEK
 	wrapKeyName := fmt.Sprintf("KEK-%s", time.Now().Format(time.DateTime))
@@ -412,7 +412,7 @@ func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, 
 	}
 
 	// Extract AES KEK
-	wrappingKey, err := p.ExportSecretKey(sh, wrapKey, 0)
+	wrappingKey, err := p.ExportSecretKey(sh, wrapKey)
 	if err != nil {
 		return nil, err
 	}
