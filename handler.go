@@ -320,7 +320,7 @@ func ImportKey(mod *internal.P11) error {
 		if err != nil {
 			return err
 		}
-		_, err = mod.ImportPublicKey(sh, pub, keyLabel, true, false)
+		_, err = mod.ImportPublicKey(sh, pub, keyLabel, false)
 		if err != nil {
 			return err
 		}
