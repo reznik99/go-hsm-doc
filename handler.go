@@ -108,7 +108,15 @@ func ListTokens(mod *internal.P11) error {
 			pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
 		})
 		if err != nil {
-			return err
+			attribs, err = mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+				pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
+				pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
+			})
+			if err != nil {
+				continue
+			}
+			attribs = append(attribs, attribs[1])
+			attribs[1] = pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, 1000) // Add fake attribute so it shows up as N/A
 		}
 		logger.Info("",
 			logger.Args("Algorithm", internal.AttributeToString(attribs[1])),
@@ -310,7 +318,18 @@ func ImportKey(mod *internal.P11) error {
 
 	switch objectType {
 	case "Certificate":
-		return fmt.Errorf("certificate import unimplemented")
+		b, rest := pem.Decode([]byte(rawToken))
+		if len(rest) != 0 {
+			return fmt.Errorf("failed to parse PEM")
+		}
+		cert, err := x509.ParseCertificate(b.Bytes)
+		if err != nil {
+			return err
+		}
+		_, err = mod.ImportCertificate(sh, cert, keyLabel, false)
+		if err != nil {
+			return err
+		}
 	case "PublicKey":
 		b, rest := pem.Decode([]byte(rawToken))
 		if len(rest) != 0 {

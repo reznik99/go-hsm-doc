@@ -17,6 +17,7 @@ var (
 	P521oid = asn1.ObjectIdentifier{1, 3, 132, 0, 35}
 )
 
+// AttributeToString converts a PKCS11 Attribute to a string
 func AttributeToString(attribute *pkcs11.Attribute) string {
 	switch attribute.Type {
 	case pkcs11.CKA_CLASS:
@@ -62,6 +63,25 @@ func AttributeToString(attribute *pkcs11.Attribute) string {
 	}
 
 	return "N/A"
+}
+
+// AlgorithmToAttribute converts an algo string like "RSA" to a pkcs11 uint
+func AlgorithmToAttribute(algo string) (uint, error) {
+	switch strings.ToUpper(algo) {
+	case "RSA":
+		return pkcs11.CKK_RSA, nil
+	case "EC", "ECDSA":
+		return pkcs11.CKK_EC, nil
+	case "AES":
+		return pkcs11.CKK_AES, nil
+	case "DES":
+		return pkcs11.CKK_DES, nil
+	case "2DES":
+		return pkcs11.CKK_DES2, nil
+	case "3DES":
+		return pkcs11.CKK_DES3, nil
+	}
+	return 0, fmt.Errorf("unrecognized algorithm %q", algo)
 }
 
 // CurveNameToCurve converts a curve name to a elliptic.Curve for HSM ECC PublicKey extraction
