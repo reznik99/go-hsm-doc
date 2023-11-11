@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/miekg/pkcs11"
@@ -81,13 +82,12 @@ func ListTokens(mod *internal.P11) error {
 		return err
 	}
 
-	err = mod.OpenSession(uint(selectedSlot))
+	// Open session and login to slot
+	sh, err := mod.OpenSession(uint(selectedSlot))
 	if err != nil {
-		return fmt.Errorf("open session error: %s", err)
+		return fmt.Errorf("open session error: %w", err)
 	}
-
-	err = Login(mod, selectedSlot)
-	if err != nil {
+	if err = Login(mod, selectedSlot); err != nil {
 		return err
 	}
 
@@ -99,11 +99,6 @@ func ListTokens(mod *internal.P11) error {
 	}
 	if len(objects) == 0 {
 		return fmt.Errorf("no objects found")
-	}
-
-	sh, ok := mod.Sessions[selectedSlot]
-	if !ok {
-		return fmt.Errorf("session doesn't exist for slot: %d", selectedSlot)
 	}
 
 	for _, o := range objects {
@@ -135,14 +130,13 @@ func FindToken(mod *internal.P11) error {
 		return err
 	}
 
-	err = mod.OpenSession(uint(selectedSlot))
+	// Open session and login to slot
+	sh, err := mod.OpenSession(uint(selectedSlot))
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
 	}
-
-	err = Login(mod, selectedSlot)
-	if err != nil {
-		return fmt.Errorf("login error: %w", err)
+	if err = Login(mod, selectedSlot); err != nil {
+		return err
 	}
 
 	objects, err := mod.FindObjects(selectedSlot, []*pkcs11.Attribute{})
@@ -151,11 +145,6 @@ func FindToken(mod *internal.P11) error {
 	}
 	if len(objects) == 0 {
 		return fmt.Errorf("no objects found")
-	}
-
-	sh, ok := mod.Sessions[selectedSlot]
-	if !ok {
-		return fmt.Errorf("session doesn't exist for slot: %d", selectedSlot)
 	}
 
 	options := []string{}
@@ -180,7 +169,7 @@ func FindToken(mod *internal.P11) error {
 	}
 
 	selected, err := InteractiveSelect.WithMaxHeight(15).WithOptions(options).Show("Select Key")
-	if !ok {
+	if err != nil {
 		return err
 	}
 
@@ -246,18 +235,15 @@ func GenerateKey(mod *internal.P11) error {
 	}
 
 	// Open session and login to slot
-	if err = mod.OpenSession(selectedSlot); err != nil {
-		return err
+	sh, err := mod.OpenSession(uint(selectedSlot))
+	if err != nil {
+		return fmt.Errorf("open session error: %w", err)
 	}
 	if err = Login(mod, selectedSlot); err != nil {
 		return err
 	}
 
 	start := time.Now()
-	sh, ok := mod.Sessions[selectedSlot]
-	if !ok {
-		return fmt.Errorf("session doesn't exist for slot: %d", selectedSlot)
-	}
 
 	switch algorithm {
 	case "RSA":
@@ -308,20 +294,19 @@ func ImportKey(mod *internal.P11) error {
 	if err != nil {
 		return err
 	}
+	rawToken = strings.Replace(rawToken, "\r", "\r\n", -1)
+	pterm.Info.Printfln("You inputted: \n%q", rawToken)
 
 	// Open session and login to slot
-	if err = mod.OpenSession(selectedSlot); err != nil {
-		return err
+	sh, err := mod.OpenSession(uint(selectedSlot))
+	if err != nil {
+		return fmt.Errorf("open session error: %w", err)
 	}
 	if err = Login(mod, selectedSlot); err != nil {
 		return err
 	}
 
 	start := time.Now()
-	sh, ok := mod.Sessions[selectedSlot]
-	if !ok {
-		return fmt.Errorf("session doesn't exist for slot: %d", selectedSlot)
-	}
 
 	switch objectType {
 	case "Certificate":

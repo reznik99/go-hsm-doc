@@ -74,19 +74,19 @@ func (p *P11) FindObjects(slotID uint, template []*pkcs11.Attribute) ([]pkcs11.O
 	return objects, nil
 }
 
-func (p *P11) OpenSession(slotID uint) error {
+func (p *P11) OpenSession(slotID uint) (pkcs11.SessionHandle, error) {
 	// Use existing
-	_, ok := p.Sessions[slotID]
+	sh, ok := p.Sessions[slotID]
 	if ok {
-		return nil
+		return sh, nil
 	}
 	// Open new connection
 	sh, err := p.Ctx.OpenSession(slotID, pkcs11.CKF_SERIAL_SESSION|pkcs11.CKF_RW_SESSION)
 	if err != nil {
-		return err
+		return sh, err
 	}
 	p.Sessions[slotID] = sh
-	return nil
+	return sh, nil
 }
 
 func (p *P11) CloseAllSessions() error {

@@ -12,7 +12,7 @@ import (
 // ImportPublicKey imports a public key into the hsm without wrapping
 func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string, extractable, ephemeral bool) (pkcs11.ObjectHandle, error) {
 	switch publicKey := pub.(type) {
-	case rsa.PublicKey:
+	case *rsa.PublicKey:
 		// Allow for 128-bit integer for future-proofing
 		exponent := make([]byte, 8)
 		binary.BigEndian.PutUint64(exponent, uint64(publicKey.E))
@@ -25,7 +25,7 @@ func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string,
 			pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PUBLIC_KEY),
 		}
 		return p.Ctx.CreateObject(sh, wrapkeyTemplate)
-	case ecdsa.PublicKey:
+	case *ecdsa.PublicKey:
 		return 0, fmt.Errorf("ec public key import unimplemented")
 	default:
 		return 0, fmt.Errorf("unrecognized key type: %T", publicKey)

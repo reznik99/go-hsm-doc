@@ -133,7 +133,7 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) (
 		return nil, err
 	}
 
-	wrapKey, err := p.ImportPublicKey(sh, priv.PublicKey, time.Now().Format(time.DateTime), true, true)
+	wrapKey, err := p.ImportPublicKey(sh, &priv.PublicKey, time.Now().Format(time.DateTime), true, true)
 	if err != nil {
 		return nil, fmt.Errorf("wrapping key import error: %w", err)
 	}
