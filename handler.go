@@ -294,8 +294,8 @@ func ImportKey(mod *internal.P11) error {
 	if err != nil {
 		return err
 	}
+	// TODO: This works for pasting key on Windows. Linux won't have carrige return so might break with pem.Decode
 	rawToken = strings.Replace(rawToken, "\r", "\r\n", -1)
-	pterm.Info.Printfln("You inputted: \n%q", rawToken)
 
 	// Open session and login to slot
 	sh, err := mod.OpenSession(uint(selectedSlot))
