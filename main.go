@@ -6,6 +6,17 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/pterm/pterm/putils"
+	"github.com/reznik99/go-hsm-doc/internal"
+)
+
+const (
+	HSMInfoCMD      = "List HSM Info"
+	SlotsCMD        = "List Slots"
+	TokensCMD       = "List Tokens"
+	FindTokenCMD    = "Find Token"
+	GenerateKeysCMD = "Generate Keys"
+	ImportKeysCMD   = "Import Keys"
+	ExitCMD         = "Exit"
 )
 
 var (
@@ -17,7 +28,7 @@ var (
 		KeyStyles: map[string]pterm.Style{},
 		MaxWidth:  80,
 	}
-	TopLevelOptions    = []string{"List HSM Info", "List Slots", "List Tokens", "Find Token", "Generate Key", "Exit"}
+	TopLevelOptions    = []string{HSMInfoCMD, SlotsCMD, TokensCMD, FindTokenCMD, GenerateKeysCMD, ImportKeysCMD, ExitCMD}
 	InteractiveText    = pterm.DefaultInteractiveTextInput.WithOnInterruptFunc(ExitFunc)
 	InteractiveConfirm = pterm.DefaultInteractiveConfirm.WithOnInterruptFunc(ExitFunc)
 	InteractiveSelect  = pterm.DefaultInteractiveSelect.WithOnInterruptFunc(ExitFunc).WithMaxHeight(len(TopLevelOptions))
@@ -58,8 +69,8 @@ func main() {
 	loader, _ := pterm.DefaultSpinner.WithWriter(multi.NewWriter()).Start("Loading Cryptoki module")
 	multi.Start()
 
-	time.Sleep(1 * time.Second)
-	mod, err := NewP11(modulePath)
+	time.Sleep(time.Second / 2)
+	mod, err := internal.NewP11(modulePath, logger)
 	if err != nil {
 		fatal("Error loading module: '%s'", err)
 	}
@@ -78,36 +89,41 @@ func main() {
 		}
 
 		switch option {
-		case "List HSM Info":
+		case HSMInfoCMD:
 			err := ListHSMInfo(mod)
 			if err != nil {
 				logger.Error("Error getting HSM info", logger.Args("", err))
 			}
-		case "List Slots":
+		case SlotsCMD:
 			err := ListSlots(mod)
 			if err != nil {
 				logger.Error("Error listing slots", logger.Args("", err))
 			}
-		case "List Tokens":
+		case TokensCMD:
 			err := ListTokens(mod)
 			if err != nil {
 				logger.Error("Error listing tokens", logger.Args("", err))
 			}
-		case "Find Token":
+		case FindTokenCMD:
 			err := FindToken(mod)
 			if err != nil {
 				logger.Error("Error during Find Token operation", logger.Args("", err))
 			}
-		case "Generate Key":
+		case GenerateKeysCMD:
 			err := GenerateKey(mod)
 			if err != nil {
 				logger.Error("Error generating key", logger.Args("", err))
 			}
-		case "Exit":
+		case ImportKeysCMD:
+			err := ImportKey(mod)
+			if err != nil {
+				logger.Error("Error importing key", logger.Args("", err))
+			}
+		case ExitCMD:
 			ExitFunc()
 		}
 
-		// Pause CLI to let user read output of command. On keypress, clear screen and restart CLI options.
+		// Pause CLI to let user read output of command. On keypress, clear screen and relist CLI options.
 		PressEnterToContinue()
 	}
 }
