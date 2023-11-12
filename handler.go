@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -31,7 +32,7 @@ var (
 		"Export",
 		"Delete",
 	}
-	objectTypes = []string{"Certificate", "PublicKey", "PrivateKey"}
+	objectTypes = []string{"Certificate", "PublicKey", "PrivateKey", "SecretKey"}
 )
 
 // Handlers for Commands
@@ -239,7 +240,7 @@ func GenerateKey(mod *internal.P11) error {
 
 	switch algorithm {
 	case "RSA":
-		_, err = mod.GenerateRSAKeypair(sh, keyLabel, length, extractable, false)
+		_, _, err = mod.GenerateRSAKeypair(sh, keyLabel, length, extractable, false)
 	case "EC":
 		_, err = mod.GenerateECKeypair(sh, keyLabel, lengthOrCurve, extractable, false)
 	case "AES":
@@ -266,7 +267,7 @@ func ImportKey(mod *internal.P11) error {
 		return err
 	}
 
-	// Select Key Algorithm  or calculate from imported key/cert?
+	// Select Key Algorithm or calculate from imported key/cert?
 	// Select Key length or calculate from imported key/cert?
 
 	// Select Object Type
@@ -329,6 +330,16 @@ func ImportKey(mod *internal.P11) error {
 		}
 	case "PrivateKey":
 		return fmt.Errorf("private Key import unimplemented")
+	case "SecretKey":
+		key, err := hex.DecodeString(rawToken)
+		if err != nil {
+			return fmt.Errorf("secret key not in HEX string format: %s", err)
+		}
+		// TODO: Support specifying custom algo i.e 3DES
+		_, err = mod.ImportSecretKey(sh, key, keyLabel, false, "AES")
+		if err != nil {
+			return err
+		}
 	}
 
 	pterm.Info.Printfln("Imported %q in %dms", objectType, time.Since(start).Milliseconds())

@@ -3,14 +3,19 @@ package internal
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/pem"
 	"fmt"
+	"time"
 
 	"github.com/miekg/pkcs11"
 )
 
+// ImportPublicKey imports a Certificate into the hsm without wrapping
 func (p *P11) ImportCertificate(sh pkcs11.SessionHandle, cert *x509.Certificate, label string, ephemeral bool) (pkcs11.ObjectHandle, error) {
 
 	wrapkeyTemplate := []*pkcs11.Attribute{
@@ -59,4 +64,56 @@ func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string,
 		// TODO: Support X25519 and/or DH keys?
 		return 0, fmt.Errorf("unrecognized key type: %T", publicKey)
 	}
+}
+
+// ImportSecretKey imports an AES/DES secret key into the HSM using an ephemeral RSA 2048 wrapping key
+func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel string, ephemeral bool, algorithm string) (pkcs11.ObjectHandle, error) {
+	// Generate Ephemeral RSA wrapping keypair and extract the public key
+	wrappingKeyHandle, unwrappingKeyHandle, err := p.GenerateRSAKeypair(sh, time.Now().Format(time.DateTime), 2048, false, true)
+	if err != nil {
+		return 0, fmt.Errorf("wrapping key generation error: %s", err)
+	}
+	defer p.Ctx.DestroyObject(sh, wrappingKeyHandle)
+	defer p.Ctx.DestroyObject(sh, unwrappingKeyHandle)
+
+	wrappingKeyPEM, err := p.ExportPublicKeyRSA(sh, wrappingKeyHandle)
+	if err != nil {
+		return 0, fmt.Errorf("wrapping key export error: %s", err)
+	}
+	b, rest := pem.Decode(wrappingKeyPEM)
+	if len(rest) != 0 {
+		return 0, fmt.Errorf("wrapping key pem parsing error: %s", err)
+	}
+	wrappingKeyAny, err := x509.ParsePKIXPublicKey(b.Bytes)
+	if err != nil {
+		return 0, fmt.Errorf("wrapping key parsing error: %s", err)
+	}
+	wrappingKey, ok := wrappingKeyAny.(*rsa.PublicKey)
+	if !ok {
+		return 0, fmt.Errorf("wrapping key is not RSA? This should never happen")
+	}
+
+	// Wrap the symmetric key
+	wrappedKey, err := rsa.EncryptOAEP(sha1.New(), rand.Reader, wrappingKey, rawKey, nil)
+	if err != nil {
+		return 0, fmt.Errorf("rsa oaep wrapping error: %s", err)
+	}
+
+	// Import/unwrap the wrapped symmetric key
+	attribs := []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, keylabel),
+		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_SECRET_KEY),
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_AES), // TODO: Check algorithm to support DES/3DES import
+		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, !ephemeral),
+		pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
+		pkcs11.NewAttribute(pkcs11.CKA_ENCRYPT, true),
+		pkcs11.NewAttribute(pkcs11.CKA_DECRYPT, true),
+		pkcs11.NewAttribute(pkcs11.CKA_WRAP, true),
+		pkcs11.NewAttribute(pkcs11.CKA_UNWRAP, true),
+		pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, true),
+	}
+	params := pkcs11.NewOAEPParams(pkcs11.CKM_SHA_1, pkcs11.CKG_MGF1_SHA1, pkcs11.CKZ_DATA_SPECIFIED, nil)
+	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_OAEP, params)}
+
+	return p.Ctx.UnwrapKey(sh, mech, unwrappingKeyHandle, wrappedKey, attribs)
 }

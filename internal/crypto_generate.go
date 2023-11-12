@@ -54,7 +54,7 @@ func (p *P11) GenerateDESKey(sh pkcs11.SessionHandle, label string, keylength in
 }
 
 // GenerateRSAKeypair generates an RSA Keypair in the HSM
-func (p *P11) GenerateRSAKeypair(sh pkcs11.SessionHandle, label string, keylength int, extractable, ephemeral bool) (pkcs11.ObjectHandle, error) {
+func (p *P11) GenerateRSAKeypair(sh pkcs11.SessionHandle, label string, keylength int, extractable, ephemeral bool) (pkcs11.ObjectHandle, pkcs11.ObjectHandle, error) {
 	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN, nil)}
 	public := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
@@ -79,8 +79,7 @@ func (p *P11) GenerateRSAKeypair(sh pkcs11.SessionHandle, label string, keylengt
 		pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, extractable),
 	}
 
-	_, priv, err := p.Ctx.GenerateKeyPair(sh, mech, public, private)
-	return priv, err
+	return p.Ctx.GenerateKeyPair(sh, mech, public, private)
 }
 
 // GenerateECKeypair generates an EC Keypair in the HSM
