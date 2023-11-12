@@ -18,7 +18,15 @@
 
 </div>
 
-### Functionality  
+### Functionality
+1. Get HSM and Token info
+2. List Slots and Keys within a Slot.
+3. Delete Certificates, Public, Private and Symmetric keys
+4. Export Certificates, Public, Private and Symmetric keys
+5. Import Certificates, Public, Private and Symmetric keys
+6. Generate RSA, EC, AES, 3DES, DES Keys
+
+### Examples  
 
 1. Print HSM and Token information  
 ![CLI Screenshot][hsm_info]  
