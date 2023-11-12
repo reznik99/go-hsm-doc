@@ -102,21 +102,10 @@ func ListTokens(mod *internal.P11) error {
 	}
 
 	for _, o := range objects {
-		attribs, err := mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
-			pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
-			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
-			pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
-		})
+		attribs, err := GetAttributeValue(mod, sh, o)
 		if err != nil {
-			attribs, err = mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
-				pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
-				pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
-			})
-			if err != nil {
-				continue
-			}
-			attribs = append(attribs, attribs[1])
-			attribs[1] = pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, 1000) // Add fake attribute so it shows up as N/A
+			logger.Error("Failed to read token attributes", logger.Args("handle", o), logger.Args("", err))
+			continue
 		}
 		logger.Info("",
 			logger.Args("Algorithm", internal.AttributeToString(attribs[1])),
@@ -132,7 +121,6 @@ func ListTokens(mod *internal.P11) error {
 }
 
 func FindToken(mod *internal.P11) error {
-
 	selectedSlot, err := PromptSlotSelection(mod)
 	if err != nil {
 		return err
@@ -158,11 +146,7 @@ func FindToken(mod *internal.P11) error {
 	options := []string{}
 	handleMap := map[string]pkcs11.ObjectHandle{}
 	for _, o := range objects {
-		attribs, err := mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
-			pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
-			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
-			pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
-		})
+		attribs, err := GetAttributeValue(mod, sh, o)
 		if err != nil {
 			logger.Error("Failed to read token attributes", logger.Args("handle", o), logger.Args("", err))
 			continue
@@ -384,12 +368,29 @@ func PromptSlotSelection(mod *internal.P11) (uint, error) {
 	return 0, fmt.Errorf("slot not selected")
 }
 
-func PrintObjectInfo(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
+func GetAttributeValue(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]*pkcs11.Attribute, error) {
 	attribs, err := mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
 	})
+	if err != nil {
+		attribs, err = mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
+			pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
+		})
+		if err != nil {
+			return nil, err
+		}
+		attribs = append(attribs, attribs[1])
+		attribs[1] = pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, 1000) // Add fake attribute so it shows up as N/A
+	}
+
+	return attribs, nil
+}
+
+func PrintObjectInfo(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
+	attribs, err := GetAttributeValue(mod, sh, o)
 	if err != nil {
 		return err
 	}

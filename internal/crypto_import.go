@@ -9,21 +9,15 @@ import (
 	"fmt"
 
 	"github.com/miekg/pkcs11"
-	"github.com/pterm/pterm"
 )
 
 func (p *P11) ImportCertificate(sh pkcs11.SessionHandle, cert *x509.Certificate, label string, ephemeral bool) (pkcs11.ObjectHandle, error) {
-	pterm.Info.Printfln("Certificate Algorithm: %q", cert.PublicKeyAlgorithm.String())
-	ckkType, err := AlgorithmToAttribute(cert.PublicKeyAlgorithm.String())
-	if err != nil {
-		return 0, err
-	}
+
 	wrapkeyTemplate := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_SUBJECT, cert.RawSubject),
 		pkcs11.NewAttribute(pkcs11.CKA_VALUE, cert.Raw),
 		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, !ephemeral),
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, label),
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, ckkType),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_CERTIFICATE),
 		pkcs11.NewAttribute(pkcs11.CKA_CERTIFICATE_TYPE, pkcs11.CKC_X_509),
 	}
