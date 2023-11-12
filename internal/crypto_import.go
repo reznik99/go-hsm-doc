@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"crypto/aes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/miekg/pkcs11"
+	keywrap "github.com/nickball/go-aes-key-wrap"
 )
 
 // ImportPublicKey imports a Certificate into the hsm without wrapping
@@ -29,7 +31,7 @@ func (p *P11) ImportCertificate(sh pkcs11.SessionHandle, cert *x509.Certificate,
 	return p.Ctx.CreateObject(sh, wrapkeyTemplate)
 }
 
-// ImportPublicKey imports an RSA/EC public key into the hsm without wrapping
+// ImportPublicKey imports an RSA/EC Public Key into the hsm without wrapping
 func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string, ephemeral bool) (pkcs11.ObjectHandle, error) {
 	switch publicKey := pub.(type) {
 	case *rsa.PublicKey:
@@ -66,7 +68,7 @@ func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string,
 	}
 }
 
-// ImportSecretKey imports an AES/DES secret key into the HSM using an ephemeral RSA 2048 wrapping key
+// ImportSecretKey imports an AES/DES/3DES Secret Key into the HSM using an ephemeral RSA 2048 wrapping key
 func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel string, ephemeral bool, algorithm string) (pkcs11.ObjectHandle, error) {
 	// Generate Ephemeral RSA wrapping keypair and extract the public key
 	wrappingKeyHandle, unwrappingKeyHandle, err := p.GenerateRSAKeypair(sh, time.Now().Format(time.DateTime), 2048, false, true)
@@ -100,10 +102,14 @@ func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel s
 	}
 
 	// Import/unwrap the wrapped symmetric key
+	algo, err := StringToAttribute(algorithm)
+	if err != nil {
+		return 0, err
+	}
 	attribs := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, keylabel),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_SECRET_KEY),
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_AES), // TODO: Check algorithm to support DES/3DES import
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, algo.Value),
 		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, !ephemeral),
 		pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
 		pkcs11.NewAttribute(pkcs11.CKA_ENCRYPT, true),
@@ -116,4 +122,49 @@ func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel s
 	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_RSA_PKCS_OAEP, params)}
 
 	return p.Ctx.UnwrapKey(sh, mech, unwrappingKeyHandle, wrappedKey, attribs)
+}
+
+// ImportPrivateKey imports an RSA/EC Private Key into the HSM using an ephemeral AES 256 wrapping key
+func (p *P11) ImportPrivateKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel string, ephemeral bool, algorithm string) (pkcs11.ObjectHandle, error) {
+	// Generate AES wrapping Key
+	var wrappingKey = make([]byte, 32)
+	if _, err := rand.Read(wrappingKey); err != nil {
+		return 0, err
+	}
+
+	b, err := aes.NewCipher(wrappingKey)
+	if err != nil {
+		return 0, err
+	}
+
+	// Wrap user key
+	wrappedKey, err := keywrap.Wrap(b, rawKey)
+	if err != nil {
+		return 0, err
+	}
+
+	// Import wrapping key
+	wrappingKeyHandle, err := p.ImportSecretKey(sh, wrappingKey, time.Now().Format(time.DateTime), true, "AES")
+	if err != nil {
+		return 0, err
+	}
+	defer p.Ctx.DestroyObject(sh, wrappingKeyHandle)
+
+	// Import/unwrap user key
+	algo, err := StringToAttribute(algorithm)
+	if err != nil {
+		return 0, err
+	}
+	attribs := []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_LABEL, keylabel),
+		pkcs11.NewAttribute(pkcs11.CKA_CLASS, pkcs11.CKO_PRIVATE_KEY),
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, algo.Value),
+		pkcs11.NewAttribute(pkcs11.CKA_TOKEN, !ephemeral),
+		pkcs11.NewAttribute(pkcs11.CKA_SIGN, true),
+		pkcs11.NewAttribute(pkcs11.CKA_PRIVATE, true),
+		pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
+		pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, true),
+	}
+	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_WRAP, nil)}
+	return p.Ctx.UnwrapKey(sh, mech, wrappingKeyHandle, wrappedKey, attribs)
 }

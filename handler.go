@@ -25,6 +25,11 @@ var (
 		"3DES": {"128", "192"},
 		"DES":  {"64"},
 	}
+	algorithmsByObjectType = map[string][]string{
+		"SecretKey":  {"AES", "3DES", "DES"},
+		"PrivateKey": {"RSA", "EC"},
+		"PublicKey":  {"RSA", "EC"},
+	}
 	algorithms    = []string{"RSA", "EC", "AES", "3DES", "DES"}
 	keyOperations = []string{
 		"Go Back",
@@ -260,6 +265,7 @@ func GenerateKey(mod *internal.P11) error {
 }
 
 func ImportKey(mod *internal.P11) error {
+	var err error
 
 	// Select Slot for key
 	selectedSlot, err := PromptSlotSelection(mod)
@@ -267,13 +273,19 @@ func ImportKey(mod *internal.P11) error {
 		return err
 	}
 
-	// Select Key Algorithm or calculate from imported key/cert?
-	// Select Key length or calculate from imported key/cert?
-
 	// Select Object Type
 	objectType, err := InteractiveSelect.WithOptions(objectTypes).Show("Object Type")
 	if err != nil {
 		return err
+	}
+
+	// Select Key Algorithm
+	var algorithm = "N/A"
+	if objectType != "Certificate" {
+		algorithm, err = InteractiveSelect.WithOptions(algorithmsByObjectType[objectType]).Show("Select Algorithm")
+		if err != nil {
+			return err
+		}
 	}
 
 	// Select Key Label for key
@@ -329,14 +341,20 @@ func ImportKey(mod *internal.P11) error {
 			return err
 		}
 	case "PrivateKey":
-		return fmt.Errorf("private Key import unimplemented")
+		b, rest := pem.Decode([]byte(rawToken))
+		if len(rest) != 0 {
+			return fmt.Errorf("failed to parse PEM")
+		}
+		_, err = mod.ImportPrivateKey(sh, b.Bytes, keyLabel, false, algorithm)
+		if err != nil {
+			return err
+		}
 	case "SecretKey":
 		key, err := hex.DecodeString(rawToken)
 		if err != nil {
 			return fmt.Errorf("secret key not in HEX string format: %s", err)
 		}
-		// TODO: Support specifying custom algo i.e 3DES
-		_, err = mod.ImportSecretKey(sh, key, keyLabel, false, "AES")
+		_, err = mod.ImportSecretKey(sh, key, keyLabel, false, algorithm)
 		if err != nil {
 			return err
 		}
