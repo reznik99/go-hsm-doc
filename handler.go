@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -68,7 +69,7 @@ func ListSlots(mod *internal.P11) error {
 		if err != nil {
 			continue
 		}
-		logger.Info(fmt.Sprintf("-> %s(%d)", slot.Label, slotID),
+		logger.Info(fmt.Sprintf("-> %s [%d]", slot.Label, slotID),
 			logger.Args("Label", slot.Label),
 			logger.Args("Model", slot.Model),
 			logger.Args("SerialNumber", slot.SerialNumber),
@@ -108,17 +109,7 @@ func ListTokens(mod *internal.P11) error {
 	}
 
 	for _, o := range objects {
-		attribs, err := GetAttributeValue(mod, sh, o)
-		if err != nil {
-			logger.Error("Failed to read token attributes", logger.Args("handle", o), logger.Args("", err))
-			continue
-		}
-		logger.Info("",
-			logger.Args("Algorithm", internal.AttributeToString(attribs[1])),
-			logger.Args("Type", internal.AttributeToString(attribs[2])),
-			logger.Args("Label", internal.AttributeToString(attribs[0])),
-			logger.Args("Handle", o),
-		)
+		PrintObjectInfo(mod, sh, o)
 	}
 
 	pterm.Info.Printfln("Found %d objects. Command completed in %dms", len(objects), time.Since(start).Milliseconds())
@@ -157,10 +148,10 @@ func FindToken(mod *internal.P11) error {
 			logger.Error("Failed to read token attributes", logger.Args("handle", o), logger.Args("", err))
 			continue
 		}
-		option := fmt.Sprintf("[%d]%s -> (%s-%s)", o,
+		option := fmt.Sprintf("[%02d] %s %s %s", o,
+			PadString(internal.AttributeToString(attribs[1]), 4),
+			PadString(internal.AttributeToString(attribs[2]), 11),
 			internal.AttributeToString(attribs[0]),
-			internal.AttributeToString(attribs[1]),
-			internal.AttributeToString(attribs[2]),
 		)
 		options = append(options, option)
 		handleMap[option] = o
@@ -423,11 +414,10 @@ func PrintObjectInfo(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.Object
 	if err != nil {
 		return err
 	}
-	logger.Info("",
-		logger.Args("Algorithm", internal.AttributeToString(attribs[1])),
-		logger.Args("Type", internal.AttributeToString(attribs[2])),
+	logger.Info(fmt.Sprintf("[%02d]", o),
+		logger.Args("Algorithm", PadString(internal.AttributeToString(attribs[1]), 4)),
+		logger.Args("Type", PadString(internal.AttributeToString(attribs[2]), 11)),
 		logger.Args("Label", internal.AttributeToString(attribs[0])),
-		logger.Args("Handle", o),
 	)
 	return nil
 }
@@ -476,4 +466,11 @@ func Login(mod *internal.P11, slotID uint) error {
 		}
 	}
 	return nil
+}
+
+// PadString returns the string left-padded with specified number of spaces
+func PadString(value string, number int) string {
+	number = int(math.Abs(float64(number - len(value))))
+	padding := strings.Repeat(" ", number)
+	return fmt.Sprintf("%s%s", value, padding)
 }

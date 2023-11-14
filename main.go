@@ -26,7 +26,7 @@ var (
 		Writer:    os.Stdout,
 		Level:     pterm.LogLevelTrace,
 		KeyStyles: map[string]pterm.Style{},
-		MaxWidth:  80,
+		MaxWidth:  100,
 	}
 	TopLevelOptions    = []string{HSMInfoCMD, SlotsCMD, TokensCMD, FindTokenCMD, GenerateKeysCMD, ImportKeysCMD, ExitCMD}
 	InteractiveText    = pterm.DefaultInteractiveTextInput.WithOnInterruptFunc(ExitFunc)

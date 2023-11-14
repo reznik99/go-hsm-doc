@@ -24,17 +24,17 @@ func AttributeToString(attribute *pkcs11.Attribute) string {
 		v := binary.LittleEndian.Uint32(attribute.Value)
 		switch v {
 		case pkcs11.CKO_DATA:
-			return "DATA       "
+			return "DATA"
 		case pkcs11.CKO_CERTIFICATE:
 			return "CERTIFICATE"
 		case pkcs11.CKO_PUBLIC_KEY:
-			return "PUBLIC_KEY "
+			return "PUBLIC_KEY"
 		case pkcs11.CKO_PRIVATE_KEY:
 			return "PRIVATE_KEY"
 		case pkcs11.CKO_SECRET_KEY:
-			return "SECRET_KEY "
+			return "SECRET_KEY"
 		default:
-			return "N/A        "
+			return "N/A"
 		}
 	case pkcs11.CKA_KEY_TYPE:
 		v := binary.LittleEndian.Uint32(attribute.Value)
@@ -46,7 +46,7 @@ func AttributeToString(attribute *pkcs11.Attribute) string {
 		case pkcs11.CKK_DH:
 			return "DH"
 		case pkcs11.CKK_EC:
-			return "EC"
+			return "EC "
 		case pkcs11.CKK_AES:
 			return "AES"
 		case pkcs11.CKK_DES:
