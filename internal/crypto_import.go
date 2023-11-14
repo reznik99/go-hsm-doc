@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"crypto/aes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -14,7 +13,7 @@ import (
 	"time"
 
 	"github.com/miekg/pkcs11"
-	keywrap "github.com/nickball/go-aes-key-wrap"
+	"github.com/tink-crypto/tink-go/v2/kwp/subtle"
 )
 
 // ImportPublicKey imports a Certificate into the hsm without wrapping
@@ -132,13 +131,13 @@ func (p *P11) ImportPrivateKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel 
 		return 0, err
 	}
 
-	b, err := aes.NewCipher(wrappingKey)
+	kwp, err := subtle.NewKWP(wrappingKey)
 	if err != nil {
 		return 0, err
 	}
 
 	// Wrap user key
-	wrappedKey, err := keywrap.Wrap(b, rawKey)
+	wrappedKey, err := kwp.Wrap(rawKey)
 	if err != nil {
 		return 0, err
 	}
@@ -165,6 +164,6 @@ func (p *P11) ImportPrivateKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel 
 		pkcs11.NewAttribute(pkcs11.CKA_SENSITIVE, true),
 		pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, true),
 	}
-	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_WRAP, nil)}
+	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_WRAP_PAD, nil)}
 	return p.Ctx.UnwrapKey(sh, mech, wrappingKeyHandle, wrappedKey, attribs)
 }

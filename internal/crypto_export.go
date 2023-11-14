@@ -1,7 +1,6 @@
 package internal
 
 import (
-	"crypto/aes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -15,7 +14,7 @@ import (
 	"time"
 
 	"github.com/miekg/pkcs11"
-	keywrap "github.com/nickball/go-aes-key-wrap"
+	"github.com/tink-crypto/tink-go/v2/kwp/subtle"
 )
 
 // ExportCertificate extracts, parses and prints a Certificate from the HSM
@@ -162,7 +161,7 @@ func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) 
 	}
 	defer p.Ctx.DestroyObject(sh, wrapKey)
 
-	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_WRAP, nil)}
+	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_WRAP_PAD, nil)}
 	wrappedKey, err := p.Ctx.WrapKey(sh, mech, wrapKey, oh)
 	if err != nil {
 		return nil, err
@@ -175,12 +174,12 @@ func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) 
 	}
 
 	// Unwrap Private Key
-	block, err := aes.NewCipher(wrappingKey)
+	kwp, err := subtle.NewKWP(wrappingKey)
 	if err != nil {
 		return nil, err
 	}
 
-	key, err := keywrap.Unwrap(block, wrappedKey)
+	key, err := kwp.Unwrap(wrappedKey)
 	if err != nil {
 		return nil, err
 	}
