@@ -1,6 +1,8 @@
 package internal
 
-import "github.com/miekg/pkcs11"
+import (
+	"github.com/miekg/pkcs11"
+)
 
 // GenerateRSAKeypair generates a AES key in the HSM
 func (p *P11) GenerateAESKey(sh pkcs11.SessionHandle, label string, keylength int, extractable, ephemeral bool) (pkcs11.ObjectHandle, error) {
