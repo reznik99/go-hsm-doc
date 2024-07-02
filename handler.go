@@ -187,7 +187,7 @@ func FindToken(mod *internal.P11) error {
 			return err
 		}
 
-		logger.Info(fmt.Sprintf("%q completed in %dms", operation, time.Since(start).Milliseconds()))
+		pterm.Info.Printfln("%q completed in %dms", operation, time.Since(start).Milliseconds())
 	}
 }
 
@@ -307,8 +307,8 @@ func ImportKey(mod *internal.P11) error {
 	switch objectType {
 	case "Certificate":
 		b, rest := pem.Decode([]byte(rawToken))
-		if len(rest) != 0 {
-			return fmt.Errorf("failed to parse PEM")
+		if b == nil || len(rest) != 0 {
+			return fmt.Errorf("failed to decode PEM %s", objectType)
 		}
 		cert, err := x509.ParseCertificate(b.Bytes)
 		if err != nil {
@@ -320,8 +320,8 @@ func ImportKey(mod *internal.P11) error {
 		}
 	case "PublicKey":
 		b, rest := pem.Decode([]byte(rawToken))
-		if len(rest) != 0 {
-			return fmt.Errorf("failed to parse PEM")
+		if b == nil || len(rest) != 0 {
+			return fmt.Errorf("failed to decode PEM %s", objectType)
 		}
 		pub, err := x509.ParsePKIXPublicKey(b.Bytes)
 		if err != nil {
@@ -333,8 +333,8 @@ func ImportKey(mod *internal.P11) error {
 		}
 	case "PrivateKey":
 		b, rest := pem.Decode([]byte(rawToken))
-		if len(rest) != 0 {
-			return fmt.Errorf("failed to parse PEM")
+		if b == nil || len(rest) != 0 {
+			return fmt.Errorf("failed to decode PEM %s", objectType)
 		}
 		_, err = mod.ImportPrivateKey(sh, b.Bytes, keyLabel, false, algorithm)
 		if err != nil {
@@ -468,7 +468,7 @@ func Login(mod *internal.P11, slotID uint) error {
 	return nil
 }
 
-// PadString returns the string left-padded with specified number of spaces
+// PadString returns the string right-padded with specified number of spaces
 func PadString(value string, number int) string {
 	number = int(math.Abs(float64(number - len(value))))
 	padding := strings.Repeat(" ", number)

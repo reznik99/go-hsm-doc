@@ -46,7 +46,7 @@ func AttributeToString(attribute *pkcs11.Attribute) string {
 		case pkcs11.CKK_DH:
 			return "DH"
 		case pkcs11.CKK_EC:
-			return "EC "
+			return "EC"
 		case pkcs11.CKK_AES:
 			return "AES"
 		case pkcs11.CKK_DES:
