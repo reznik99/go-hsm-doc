@@ -1,11 +1,13 @@
 package internal
 
 import (
+	"crypto/ecdsa"
 	"crypto/elliptic"
 	"encoding/asn1"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/miekg/pkcs11"
@@ -163,4 +165,32 @@ func CurveNameToECParams(curveName string) ([]byte, error) {
 		return nil, err
 	}
 	return asn1.Marshal(curveOID)
+}
+
+// MarshalECPoint encodes an EC public key as the CKA_EC_POINT value: the X9.62 point wrapped in a DER OCTET STRING.
+func MarshalECPoint(pub *ecdsa.PublicKey) ([]byte, error) {
+	// elliptic.Marshal kept over crypto/ecdh: the latter has no P-224.
+	point := elliptic.Marshal(pub.Curve, pub.X, pub.Y) //nolint:staticcheck
+	return asn1.Marshal(asn1.RawValue{Tag: asn1.TagOctetString, Bytes: point})
+}
+
+// ParseECPoint decodes a CKA_EC_POINT value into curve coordinates.
+// The spec wraps the point in a DER OCTET STRING, but some HSMs return it raw, so try the unwrap then fall back.
+func ParseECPoint(curve elliptic.Curve, raw []byte) (*big.Int, *big.Int, error) {
+	ecPoint := raw
+	var octetString asn1.RawValue
+	if _, err := asn1.Unmarshal(raw, &octetString); err == nil && len(octetString.Bytes) > 0 {
+		ecPoint = octetString.Bytes
+	}
+
+	// elliptic.Unmarshal kept over crypto/ecdh: the latter has no P-224.
+	x, y := elliptic.Unmarshal(curve, ecPoint) //nolint:staticcheck
+	if x == nil {
+		// Unwrap can mis-parse a raw point (0x04 doubles as the OCTET STRING tag); retry with the untouched value.
+		x, y = elliptic.Unmarshal(curve, raw) //nolint:staticcheck
+	}
+	if x == nil {
+		return nil, nil, errors.New("failed to parse EC point")
+	}
+	return x, y, nil
 }

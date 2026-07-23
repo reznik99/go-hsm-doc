@@ -2,12 +2,10 @@ package internal
 
 import (
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1" //nolint:gosec // OAEP key-wrapping hash, kept for broad HSM compatibility
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -53,10 +51,7 @@ func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string,
 		if err != nil {
 			return pkcs11.ObjectHandle(0), err
 		}
-		// elliptic.Marshal kept over crypto/ecdh: the latter has no P-224.
-		point := elliptic.Marshal(publicKey.Curve, publicKey.X, publicKey.Y) //nolint:staticcheck
-		// PKCS#11 wants CKA_EC_POINT as a DER OCTET STRING wrapping the point (X9.62 ECPoint); raw is non-compliant.
-		ecPoint, err := asn1.Marshal(asn1.RawValue{Tag: asn1.TagOctetString, Bytes: point})
+		ecPoint, err := MarshalECPoint(publicKey)
 		if err != nil {
 			return pkcs11.ObjectHandle(0), err
 		}

@@ -6,7 +6,11 @@ all: lint test build
 
 # --- Test ---
 test:
-	go test -race ./...
+	@mkdir -p build
+	go test -race -coverprofile=build/coverage.out ./...
+	@go tool cover -func=build/coverage.out | tail -n 1
+	@go tool cover -html=build/coverage.out -o build/coverage.html
+	@echo "coverage report: build/coverage.html"
 
 # --- Build ---
 build:
