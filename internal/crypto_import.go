@@ -5,13 +5,13 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // OAEP key-wrapping hash, kept for broad HSM compatibility
 	"crypto/x509"
 	"encoding/asn1"
-	"encoding/binary"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/miekg/pkcs11"
@@ -36,9 +36,8 @@ func (p *P11) ImportCertificate(sh pkcs11.SessionHandle, cert *x509.Certificate,
 func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string, ephemeral bool) (pkcs11.ObjectHandle, error) {
 	switch publicKey := pub.(type) {
 	case *rsa.PublicKey:
-		// Allow for 128-bit integer for future-proofing
-		exponent := make([]byte, 8)
-		binary.BigEndian.PutUint64(exponent, uint64(publicKey.E))
+		// CKA_PUBLIC_EXPONENT is a minimal big-endian integer.
+		exponent := big.NewInt(int64(publicKey.E)).Bytes()
 		template := []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_MODULUS, publicKey.N.Bytes()),
 			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, exponent),
@@ -110,7 +109,7 @@ func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel s
 	}
 
 	// Wrap the symmetric key
-	wrappedKey, err := rsa.EncryptOAEP(sha1.New(), rand.Reader, wrappingKey, rawKey, nil)
+	wrappedKey, err := rsa.EncryptOAEP(sha1.New(), rand.Reader, wrappingKey, rawKey, nil) //nolint:gosec // OAEP key-wrapping hash, kept for broad HSM compatibility
 	if err != nil {
 		return 0, fmt.Errorf("rsa oaep wrapping error: %w", err)
 	}

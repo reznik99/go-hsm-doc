@@ -5,7 +5,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // OAEP key-wrapping hash, kept for broad HSM compatibility
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
@@ -161,7 +161,7 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) (
 	}
 
 	// Unwrap key
-	return rsa.DecryptOAEP(sha1.New(), rand.Reader, priv, wrappedKey, nil)
+	return rsa.DecryptOAEP(sha1.New(), rand.Reader, priv, wrappedKey, nil) //nolint:gosec // OAEP key-wrapping hash, kept for broad HSM compatibility
 }
 
 // ExportPrivateKey extracts, parses and prints an RSA/EC key using an ephemeral AES wrapping key.
