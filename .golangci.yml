@@ -1,0 +1,42 @@
+version: "2"
+
+linters:
+  enable:
+    # Defaults (keep explicit so we know what's on)
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Error handling
+    - nilerr          # returning nil when err is not nil
+    - errorlint       # Go 1.13+ error wrapping patterns
+
+    # Security (this is a PKCS#11 HSM/crypto tool)
+    - gosec           # common security issues
+
+    # Performance
+    - unconvert       # unnecessary type conversions
+    - perfsprint      # faster alternatives to fmt.Sprintf
+    - intrange        # integer range loops (Go 1.22+)
+
+    # Code quality
+    - unparam         # unused function parameters
+    - wastedassign    # wasted variable assignments
+    - gocritic        # bug/performance/style diagnostics
+    - revive          # general purpose linter
+    - modernize       # suggests modern Go features
+    - misspell        # catches common typos
+    - durationcheck   # prevents multiplying two durations
+    - copyloopvar     # loop variable capture bugs
+
+  settings:
+    revive:
+      rules:
+        - name: package-comments
+          disabled: true
+
+formatters:
+  enable:
+    - gofmt
