@@ -25,6 +25,7 @@ func NewP11(modulePath string, logger pterm.Logger) (*P11, error) {
 	}
 	err := module.Ctx.Initialize()
 	if err != nil {
+		module.Ctx.Destroy()
 		return nil, fmt.Errorf("error initializing module: %s", err)
 	}
 
@@ -60,15 +61,22 @@ func (p *P11) FindObjects(slotID uint, template []*pkcs11.Attribute) ([]pkcs11.O
 		return nil, fmt.Errorf("session doesn't exist for slot: %d", slotID)
 	}
 
-	err := p.Ctx.FindObjectsInit(sh, []*pkcs11.Attribute{})
+	err := p.Ctx.FindObjectsInit(sh, template)
 	if err != nil {
 		return nil, fmt.Errorf("find objects init error: %w", err)
 	}
 	defer p.Ctx.FindObjectsFinal(sh)
 
-	objects, _, err := p.Ctx.FindObjects(sh, 1000)
-	if err != nil {
-		return nil, fmt.Errorf("find objects error: %w", err)
+	var objects []pkcs11.ObjectHandle
+	for {
+		found, _, err := p.Ctx.FindObjects(sh, 100)
+		if err != nil {
+			return nil, fmt.Errorf("find objects error: %w", err)
+		}
+		if len(found) == 0 {
+			break
+		}
+		objects = append(objects, found...)
 	}
 
 	return objects, nil
@@ -109,9 +117,6 @@ func (p *P11) Login(slotID uint, pin string) error {
 
 func (p *P11) Finalize() error {
 	err := p.Ctx.Finalize()
-	if err != nil {
-		return err
-	}
 	p.Ctx.Destroy()
-	return nil
+	return err
 }

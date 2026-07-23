@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +20,7 @@ import (
 var (
 	keyLengths = map[string][]string{
 		"RSA":  {"1024", "2048", "4096"},
-		"EC":   {"P224", "P256", "P384", "P512"},
+		"EC":   {"P224", "P256", "P384", "P521"},
 		"AES":  {"128", "192", "256"},
 		"3DES": {"128", "192"},
 		"DES":  {"64"},
@@ -169,7 +168,7 @@ func FindToken(mod *internal.P11) error {
 
 	for {
 		operation, err := InteractiveSelect.WithOptions(keyOperations).Show("Select operation")
-		if !ok {
+		if err != nil {
 			return err
 		}
 		start := time.Now()
@@ -181,7 +180,7 @@ func FindToken(mod *internal.P11) error {
 		case "Export":
 			_, err = ExportToken(mod, sh, oh)
 		case "Delete":
-			err = mod.Ctx.DestroyObject(sh, oh)
+			return DeleteToken(mod, sh, oh)
 		}
 		if err != nil {
 			return err
@@ -356,11 +355,6 @@ func ImportKey(mod *internal.P11) error {
 	return nil
 }
 
-func ExitFunc() {
-	logger.Info("Exiting HSM-DOCTOR...")
-	os.Exit(0)
-}
-
 // Helper functions
 
 func PromptSlotSelection(mod *internal.P11) (uint, error) {
@@ -420,6 +414,14 @@ func PrintObjectInfo(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.Object
 		logger.Args("Label", internal.AttributeToString(attribs[0])),
 	)
 	return nil
+}
+
+func DeleteToken(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
+	confirmed, err := InteractiveConfirm.Show("Delete selected object?")
+	if err != nil || !confirmed {
+		return err
+	}
+	return mod.Ctx.DestroyObject(sh, o)
 }
 
 func ExportToken(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byte, error) {

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"os/signal"
 	"time"
 
 	"github.com/pterm/pterm"
@@ -34,11 +36,21 @@ var (
 	InteractiveSelect  = pterm.DefaultInteractiveSelect.WithOnInterruptFunc(ExitFunc).WithMaxHeight(len(TopLevelOptions))
 	TitlePrefix        = putils.LettersFromStringWithStyle("HSM", pterm.FgCyan.ToStyle())
 	Title              = putils.LettersFromStringWithStyle("-DOCTOR", pterm.FgLightMagenta.ToStyle())
+	mod                *internal.P11
 )
 
 func fatal(message string, args ...any) {
 	pterm.Error.Printfln(message, args...)
 	os.Exit(1)
+}
+
+func ExitFunc() {
+	logger.Info("Exiting HSM-DOCTOR...")
+	if mod != nil {
+		mod.CloseAllSessions()
+		mod.Finalize()
+	}
+	os.Exit(0)
 }
 
 func PrintTitle() {
@@ -55,14 +67,20 @@ func PressEnterToContinue() {
 }
 
 func main() {
+	if err := run(); err != nil {
+		fatal("%s", err)
+	}
+}
+
+func run() error {
 	PrintTitle()
 
 	modulePath, err := InteractiveText.Show("Input Cryptoki Library path (.dll / .so)")
 	if err != nil {
-		fatal("Error reading user input: %s", err)
+		return fmt.Errorf("read module path: %w", err)
 	}
 	if modulePath == "" {
-		fatal("Module path is empty but required")
+		return fmt.Errorf("module path is required")
 	}
 
 	multi := pterm.DefaultMultiPrinter
@@ -70,10 +88,18 @@ func main() {
 	multi.Start()
 
 	time.Sleep(time.Second / 2)
-	mod, err := internal.NewP11(modulePath, logger)
+	mod, err = internal.NewP11(modulePath, logger)
 	if err != nil {
-		fatal("Error loading module: '%s'", err)
+		multi.Stop()
+		return fmt.Errorf("load module: %w", err)
 	}
+
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
+	go func() {
+		<-interrupt
+		ExitFunc()
+	}()
 
 	loader.Info("Loaded cryptoki module -> ", modulePath)
 	multi.Stop()
