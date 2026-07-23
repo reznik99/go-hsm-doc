@@ -136,7 +136,11 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) (
 	if err != nil {
 		return nil, fmt.Errorf("wrapping key import error: %w", err)
 	}
-	defer p.Ctx.DestroyObject(sh, wrapKey)
+	defer func() {
+		if err := p.Ctx.DestroyObject(sh, wrapKey); err != nil {
+			p.logger.Error("Error destroying ephemeral wrapping key", p.logger.Args("", err))
+		}
+	}()
 
 	// Wrap AES key with imported wrapping key
 	wrapParam := pkcs11.NewOAEPParams(pkcs11.CKM_SHA_1, pkcs11.CKG_MGF1_SHA1, pkcs11.CKZ_DATA_SPECIFIED, nil)
@@ -154,12 +158,16 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) (
 func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) ([]byte, error) {
 
 	// Generate Ephemeral AES KEK
-	wrapKeyName := fmt.Sprintf("KEK-%s", time.Now().Format(time.DateTime))
+	wrapKeyName := "KEK-" + time.Now().Format(time.DateTime)
 	wrapKey, err := p.GenerateAESKey(sh, wrapKeyName, 256, true, true)
 	if err != nil {
 		return nil, err
 	}
-	defer p.Ctx.DestroyObject(sh, wrapKey)
+	defer func() {
+		if err := p.Ctx.DestroyObject(sh, wrapKey); err != nil {
+			p.logger.Error("Error destroying ephemeral wrapping key", p.logger.Args("", err))
+		}
+	}()
 
 	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_WRAP_PAD, nil)}
 	wrappedKey, err := p.Ctx.WrapKey(sh, mech, wrapKey, oh)

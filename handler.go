@@ -89,7 +89,7 @@ func ListTokens(mod *internal.P11) error {
 	}
 
 	// Open session and login to slot
-	sh, err := mod.OpenSession(uint(selectedSlot))
+	sh, err := mod.OpenSession(selectedSlot)
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
 	}
@@ -104,11 +104,13 @@ func ListTokens(mod *internal.P11) error {
 		return err
 	}
 	if len(objects) == 0 {
-		return fmt.Errorf("no objects found")
+		return errors.New("no objects found")
 	}
 
 	for _, o := range objects {
-		PrintObjectInfo(mod, sh, o)
+		if err := PrintObjectInfo(mod, sh, o); err != nil {
+			logger.Error("Error printing object info", logger.Args("", err))
+		}
 	}
 
 	pterm.Info.Printfln("Found %d objects. Command completed in %dms", len(objects), time.Since(start).Milliseconds())
@@ -123,7 +125,7 @@ func FindToken(mod *internal.P11) error {
 	}
 
 	// Open session and login to slot
-	sh, err := mod.OpenSession(uint(selectedSlot))
+	sh, err := mod.OpenSession(selectedSlot)
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
 	}
@@ -136,7 +138,7 @@ func FindToken(mod *internal.P11) error {
 		return fmt.Errorf("find objects error: %w", err)
 	}
 	if len(objects) == 0 {
-		return fmt.Errorf("no objects found")
+		return errors.New("no objects found")
 	}
 
 	options := []string{}
@@ -223,7 +225,7 @@ func GenerateKey(mod *internal.P11) error {
 	}
 
 	// Open session and login to slot
-	sh, err := mod.OpenSession(uint(selectedSlot))
+	sh, err := mod.OpenSession(selectedSlot)
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
 	}
@@ -290,10 +292,10 @@ func ImportKey(mod *internal.P11) error {
 		return err
 	}
 	// TODO: This works for pasting key on Windows. Linux won't have carrige return so might break with pem.Decode
-	rawToken = strings.Replace(rawToken, "\r", "\r\n", -1)
+	rawToken = strings.ReplaceAll(rawToken, "\r", "\r\n")
 
 	// Open session and login to slot
-	sh, err := mod.OpenSession(uint(selectedSlot))
+	sh, err := mod.OpenSession(selectedSlot)
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
 	}
@@ -342,7 +344,7 @@ func ImportKey(mod *internal.P11) error {
 	case "SecretKey":
 		key, err := hex.DecodeString(rawToken)
 		if err != nil {
-			return fmt.Errorf("secret key not in HEX string format: %s", err)
+			return fmt.Errorf("secret key not in HEX string format: %w", err)
 		}
 		_, err = mod.ImportSecretKey(sh, key, keyLabel, false, algorithm)
 		if err != nil {
@@ -370,7 +372,7 @@ func PromptSlotSelection(mod *internal.P11) (uint, error) {
 
 	slotLabel, err := InteractiveSelect.WithOptions(options).Show("Select Slot")
 	if err != nil {
-		return 0, fmt.Errorf("slot selection error: %s", err)
+		return 0, fmt.Errorf("slot selection error: %w", err)
 	}
 
 	for slotID, slot := range slots {
@@ -379,7 +381,7 @@ func PromptSlotSelection(mod *internal.P11) (uint, error) {
 		}
 	}
 
-	return 0, fmt.Errorf("slot not selected")
+	return 0, errors.New("slot not selected")
 }
 
 func GetAttributeValue(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]*pkcs11.Attribute, error) {
@@ -459,7 +461,7 @@ func ExportToken(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHand
 func Login(mod *internal.P11, slotID uint) error {
 	pin, err := InteractiveText.WithMask("*").Show("Slot/Partition PIN (optional)")
 	if err != nil {
-		return fmt.Errorf("error reading Slot/Partition PIN: %s", err)
+		return fmt.Errorf("error reading Slot/Partition PIN: %w", err)
 	}
 	if pin != "" {
 		err = mod.Login(slotID, pin)

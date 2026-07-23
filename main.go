@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -47,15 +48,21 @@ func fatal(message string, args ...any) {
 func ExitFunc() {
 	logger.Info("Exiting HSM-DOCTOR...")
 	if mod != nil {
-		mod.CloseAllSessions()
-		mod.Finalize()
+		if err := mod.CloseAllSessions(); err != nil {
+			logger.Error("Error closing sessions", logger.Args("", err))
+		}
+		if err := mod.Finalize(); err != nil {
+			logger.Error("Error finalizing module", logger.Args("", err))
+		}
 	}
 	os.Exit(0)
 }
 
 func PrintTitle() {
 	pterm.Info.Println("\033[H\033[2J")
-	pterm.DefaultBigText.WithLetters(TitlePrefix, Title).Render()
+	if err := pterm.DefaultBigText.WithLetters(TitlePrefix, Title).Render(); err != nil {
+		logger.Error("Error rendering title", logger.Args("", err))
+	}
 	pterm.Info.Printfln("Version %q", Version)
 }
 
@@ -80,17 +87,21 @@ func run() error {
 		return fmt.Errorf("read module path: %w", err)
 	}
 	if modulePath == "" {
-		return fmt.Errorf("module path is required")
+		return errors.New("module path is required")
 	}
 
 	multi := pterm.DefaultMultiPrinter
 	loader, _ := pterm.DefaultSpinner.WithWriter(multi.NewWriter()).Start("Loading Cryptoki module")
-	multi.Start()
+	if _, err := multi.Start(); err != nil {
+		logger.Error("Error starting output printer", logger.Args("", err))
+	}
 
 	time.Sleep(time.Second / 2)
 	mod, err = internal.NewP11(modulePath, logger)
 	if err != nil {
-		multi.Stop()
+		if _, serr := multi.Stop(); serr != nil {
+			logger.Error("Error stopping output printer", logger.Args("", serr))
+		}
 		return fmt.Errorf("load module: %w", err)
 	}
 
@@ -102,7 +113,9 @@ func run() error {
 	}()
 
 	loader.Info("Loaded cryptoki module -> ", modulePath)
-	multi.Stop()
+	if _, err := multi.Stop(); err != nil {
+		logger.Error("Error stopping output printer", logger.Args("", err))
+	}
 
 	// Main program loop
 	for {

@@ -4,6 +4,7 @@ import (
 	"crypto/elliptic"
 	"encoding/asn1"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -96,7 +97,7 @@ func CurveNameToCurve(curveName string) (curve elliptic.Curve, err error) {
 	case "p521", "p-521":
 		curve = elliptic.P521()
 	default:
-		err = fmt.Errorf("input string does not match known curve")
+		err = errors.New("input string does not match known curve")
 	}
 	return
 }
@@ -104,16 +105,17 @@ func CurveNameToCurve(curveName string) (curve elliptic.Curve, err error) {
 // OidToCurveName converts an ObjectIdentifier to a named curve
 func OidToCurveName(curve asn1.ObjectIdentifier) (name string, err error) {
 
-	if curve.Equal(P224oid) {
+	switch {
+	case curve.Equal(P224oid):
 		return "p224", nil
-	} else if curve.Equal(P256oid) {
+	case curve.Equal(P256oid):
 		return "p256", nil
-	} else if curve.Equal(P384oid) {
+	case curve.Equal(P384oid):
 		return "p384", nil
-	} else if curve.Equal(P521oid) {
+	case curve.Equal(P521oid):
 		return "p521", nil
-	} else {
-		return "", fmt.Errorf("unrecognized curve ObjectIdentifier")
+	default:
+		return "", errors.New("unrecognized curve ObjectIdentifier")
 	}
 }
 
@@ -129,7 +131,7 @@ func CurveNameToOid(curveName string) (curve asn1.ObjectIdentifier, err error) {
 	case "p521", "p-521":
 		curve = P521oid
 	default:
-		err = fmt.Errorf("input string does not match known curve")
+		err = errors.New("input string does not match known curve")
 	}
 	return
 }

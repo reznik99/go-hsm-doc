@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"time"
 
@@ -72,32 +73,38 @@ func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel s
 	// Generate Ephemeral RSA wrapping keypair and extract the public key
 	wrappingKeyHandle, unwrappingKeyHandle, err := p.GenerateRSAKeypair(sh, time.Now().Format(time.DateTime), 2048, false, true)
 	if err != nil {
-		return 0, fmt.Errorf("wrapping key generation error: %s", err)
+		return 0, fmt.Errorf("wrapping key generation error: %w", err)
 	}
-	defer p.Ctx.DestroyObject(sh, wrappingKeyHandle)
-	defer p.Ctx.DestroyObject(sh, unwrappingKeyHandle)
+	defer func() {
+		if err := p.Ctx.DestroyObject(sh, wrappingKeyHandle); err != nil {
+			p.logger.Error("Error destroying ephemeral wrapping key", p.logger.Args("", err))
+		}
+		if err := p.Ctx.DestroyObject(sh, unwrappingKeyHandle); err != nil {
+			p.logger.Error("Error destroying ephemeral unwrapping key", p.logger.Args("", err))
+		}
+	}()
 
 	wrappingKeyPEM, err := p.ExportPublicKeyRSA(sh, wrappingKeyHandle)
 	if err != nil {
-		return 0, fmt.Errorf("wrapping key export error: %s", err)
+		return 0, fmt.Errorf("wrapping key export error: %w", err)
 	}
 	b, rest := pem.Decode(wrappingKeyPEM)
 	if len(rest) != 0 {
-		return 0, fmt.Errorf("wrapping key pem parsing error: %s", err)
+		return 0, fmt.Errorf("wrapping key pem parsing error: %w", err)
 	}
 	wrappingKeyAny, err := x509.ParsePKIXPublicKey(b.Bytes)
 	if err != nil {
-		return 0, fmt.Errorf("wrapping key parsing error: %s", err)
+		return 0, fmt.Errorf("wrapping key parsing error: %w", err)
 	}
 	wrappingKey, ok := wrappingKeyAny.(*rsa.PublicKey)
 	if !ok {
-		return 0, fmt.Errorf("wrapping key is not RSA? This should never happen")
+		return 0, errors.New("wrapping key is not RSA? This should never happen")
 	}
 
 	// Wrap the symmetric key
 	wrappedKey, err := rsa.EncryptOAEP(sha1.New(), rand.Reader, wrappingKey, rawKey, nil)
 	if err != nil {
-		return 0, fmt.Errorf("rsa oaep wrapping error: %s", err)
+		return 0, fmt.Errorf("rsa oaep wrapping error: %w", err)
 	}
 
 	// Import/unwrap the wrapped symmetric key
@@ -147,7 +154,11 @@ func (p *P11) ImportPrivateKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel 
 	if err != nil {
 		return 0, err
 	}
-	defer p.Ctx.DestroyObject(sh, wrappingKeyHandle)
+	defer func() {
+		if err := p.Ctx.DestroyObject(sh, wrappingKeyHandle); err != nil {
+			p.logger.Error("Error destroying ephemeral wrapping key", p.logger.Args("", err))
+		}
+	}()
 
 	// Import/unwrap user key
 	algo, err := StringToAttribute(algorithm)

@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/miekg/pkcs11"
@@ -21,12 +22,12 @@ func NewP11(modulePath string, logger pterm.Logger) (*P11, error) {
 
 	module.Ctx = pkcs11.New(modulePath)
 	if module.Ctx == nil {
-		return nil, fmt.Errorf("error loading module")
+		return nil, errors.New("error loading module")
 	}
 	err := module.Ctx.Initialize()
 	if err != nil {
 		module.Ctx.Destroy()
-		return nil, fmt.Errorf("error initializing module: %s", err)
+		return nil, fmt.Errorf("error initializing module: %w", err)
 	}
 
 	return module, nil
@@ -37,7 +38,7 @@ func (p *P11) GetSlots() (map[uint]pkcs11.TokenInfo, error) {
 
 	slots, err := p.Ctx.GetSlotList(true)
 	if err != nil {
-		return nil, fmt.Errorf("error reading Slots: %s", err)
+		return nil, fmt.Errorf("error reading Slots: %w", err)
 	}
 
 	for _, slotID := range slots {
@@ -65,7 +66,11 @@ func (p *P11) FindObjects(slotID uint, template []*pkcs11.Attribute) ([]pkcs11.O
 	if err != nil {
 		return nil, fmt.Errorf("find objects init error: %w", err)
 	}
-	defer p.Ctx.FindObjectsFinal(sh)
+	defer func() {
+		if err := p.Ctx.FindObjectsFinal(sh); err != nil {
+			p.logger.Error("Error finalizing object search", p.logger.Args("", err))
+		}
+	}()
 
 	var objects []pkcs11.ObjectHandle
 	for {
