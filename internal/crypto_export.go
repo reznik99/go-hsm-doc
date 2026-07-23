@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/asn1"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -95,15 +96,24 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 		return nil, err
 	}
 
-	// Parse EC_POINT
-	var point asn1.RawValue
-	_, err = asn1.Unmarshal(attr[1].Value, &point)
-	if err != nil {
-		return nil, err
+	// Spec says CKA_EC_POINT is a DER OCTET STRING wrapping the point, but some HSMs return it raw; try unwrap, else use as-is.
+	ecPoint := attr[1].Value
+	var octetString asn1.RawValue
+	if _, err = asn1.Unmarshal(ecPoint, &octetString); err == nil && len(octetString.Bytes) > 0 {
+		ecPoint = octetString.Bytes
+	}
+
+	// elliptic.Unmarshal kept over crypto/ecdh: the latter has no P-224.
+	x, y := elliptic.Unmarshal(curve, ecPoint) //nolint:staticcheck
+	if x == nil {
+		// Unwrap can mis-parse a raw point (0x04 doubles as the OCTET STRING tag); retry with the untouched value.
+		x, y = elliptic.Unmarshal(curve, attr[1].Value) //nolint:staticcheck
+	}
+	if x == nil {
+		return nil, errors.New("failed to parse EC point")
 	}
 
 	// Create an ECDSA public key.
-	x, y := elliptic.Unmarshal(curve, point.Bytes)
 	ecPublicKey := &ecdsa.PublicKey{
 		Curve: curve,
 		X:     x,
