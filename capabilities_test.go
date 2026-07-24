@@ -8,7 +8,7 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
-func TestKeyGenerationOptions(t *testing.T) {
+func TestEligibleKeyGenerationOptions(t *testing.T) {
 	capabilities := slotCapabilities{mechanisms: map[uint]pkcs11.MechanismInfo{
 		pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN: {
 			MinKeySize: 2048,
@@ -29,7 +29,7 @@ func TestKeyGenerationOptions(t *testing.T) {
 		pkcs11.CKM_DES3_KEY_GEN: {Flags: pkcs11.CKF_GENERATE},
 	}}
 
-	options := supportedKeyGenerationOptions(capabilities)
+	options := eligibleKeyGenerationOptions(capabilities)
 	want := []keyGenerationOption{
 		{algorithm: "RSA", parameters: []string{"2048", "4096"}},
 		{algorithm: "EC", parameters: []string{"P256", "P384"}},
@@ -44,7 +44,7 @@ func TestKeyGenerationOptions(t *testing.T) {
 	}
 }
 
-func TestKeyGenerationOptionsRequireGenerationFlags(t *testing.T) {
+func TestEligibleKeyGenerationOptionsRequireGenerationFlags(t *testing.T) {
 	capabilities := slotCapabilities{mechanisms: map[uint]pkcs11.MechanismInfo{
 		pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN: {Flags: pkcs11.CKF_SIGN},
 		pkcs11.CKM_EC_KEY_PAIR_GEN:       {Flags: pkcs11.CKF_GENERATE_KEY_PAIR},
@@ -52,7 +52,7 @@ func TestKeyGenerationOptionsRequireGenerationFlags(t *testing.T) {
 		pkcs11.CKM_DES_KEY_GEN:           {Flags: pkcs11.CKF_GENERATE},
 	}}
 
-	options := supportedKeyGenerationOptions(capabilities)
+	options := eligibleKeyGenerationOptions(capabilities)
 	want := []keyGenerationOption{
 		{algorithm: "AES", parameters: []string{"128", "192", "256"}},
 		{algorithm: "DES", parameters: []string{"64"}},
@@ -91,6 +91,15 @@ func TestSupportedImportObjectTypes(t *testing.T) {
 			name:       "private and secret key unwrap",
 			mechanisms: allImportMechanisms,
 			want:       []string{"Certificate", "PublicKey", "PrivateKey", "SecretKey"},
+		},
+		{
+			name: "RSA 2048 wrapper unavailable",
+			mechanisms: map[uint]pkcs11.MechanismInfo{
+				pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN: {MinKeySize: 3072, MaxKeySize: 4096, Flags: pkcs11.CKF_GENERATE_KEY_PAIR},
+				pkcs11.CKM_RSA_PKCS_OAEP:         {Flags: pkcs11.CKF_UNWRAP},
+				pkcs11.CKM_AES_KEY_WRAP_PAD:      {Flags: pkcs11.CKF_UNWRAP},
+			},
+			want: []string{"Certificate", "PublicKey"},
 		},
 		{
 			name: "wrong mechanism flags",

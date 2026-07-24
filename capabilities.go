@@ -47,7 +47,7 @@ func (a *App) getSlotCapabilities(slotID uint) (slotCapabilities, error) {
 	return capabilities, err
 }
 
-func supportedKeyGenerationOptions(capabilities slotCapabilities) []keyGenerationOption {
+func eligibleKeyGenerationOptions(capabilities slotCapabilities) []keyGenerationOption {
 	options := make([]keyGenerationOption, 0, 5)
 
 	if info, ok := mechanismInfo(capabilities, pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN, pkcs11.CKF_GENERATE_KEY_PAIR); ok {
@@ -88,8 +88,8 @@ func supportedKeyGenerationOptions(capabilities slotCapabilities) []keyGeneratio
 
 func supportedImportObjectTypes(capabilities slotCapabilities) []string {
 	options := []string{"Certificate", "PublicKey"}
-	secretKeyImport := supportsMechanism(capabilities, pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN, pkcs11.CKF_GENERATE_KEY_PAIR) &&
-		supportsMechanism(capabilities, pkcs11.CKM_RSA_PKCS_OAEP, pkcs11.CKF_UNWRAP)
+	rsaInfo, rsaGeneration := mechanismInfo(capabilities, pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN, pkcs11.CKF_GENERATE_KEY_PAIR)
+	secretKeyImport := rsaGeneration && keySizeAllowed(rsaInfo, 2048) && supportsMechanism(capabilities, pkcs11.CKM_RSA_PKCS_OAEP, pkcs11.CKF_UNWRAP)
 	if secretKeyImport && supportsMechanism(capabilities, pkcs11.CKM_AES_KEY_WRAP_PAD, pkcs11.CKF_UNWRAP) {
 		options = append(options, "PrivateKey")
 	}
@@ -112,9 +112,13 @@ func supportsMechanism(capabilities slotCapabilities, mechanism, flags uint) boo
 func filterKeySizes(info pkcs11.MechanismInfo, presets []keySizePreset) []string {
 	output := make([]string, 0, len(presets))
 	for _, preset := range presets {
-		if (info.MinKeySize == 0 || preset.size >= info.MinKeySize) && (info.MaxKeySize == 0 || preset.size <= info.MaxKeySize) {
+		if keySizeAllowed(info, preset.size) {
 			output = append(output, preset.label)
 		}
 	}
 	return output
+}
+
+func keySizeAllowed(info pkcs11.MechanismInfo, size uint) bool {
+	return (info.MinKeySize == 0 || size >= info.MinKeySize) && (info.MaxKeySize == 0 || size <= info.MaxKeySize)
 }

@@ -182,7 +182,7 @@ func (a *App) generateKey() error {
 	if capabilityErr != nil {
 		a.log.Warn("Some slot capabilities could not be loaded", a.log.Args("slot_id", selectedSlot), a.log.Args("error", capabilityErr))
 	}
-	generationOptions := supportedKeyGenerationOptions(capabilities)
+	generationOptions := eligibleKeyGenerationOptions(capabilities)
 	if len(generationOptions) == 0 {
 		return errors.Join(errors.New("slot has no supported key generation mechanisms"), capabilityErr)
 	}
@@ -210,6 +210,10 @@ func (a *App) generateKey() error {
 	if err != nil {
 		return err
 	}
+	objectID, err := a.promptObjectID()
+	if err != nil {
+		return err
+	}
 
 	extractable, err := a.interactiveConfirm.Show("Extractable")
 	if err != nil {
@@ -227,20 +231,24 @@ func (a *App) generateKey() error {
 
 	start := time.Now()
 
+	var objectHandle pkcs11.ObjectHandle
 	switch algorithm {
 	case "RSA":
-		_, _, err = a.mod.GenerateRSAKeypair(sh, keyLabel, length, extractable, false)
+		objectHandle, _, err = a.mod.GenerateRSAKeypair(sh, keyLabel, objectID, length, extractable, false)
 	case "EC":
-		_, err = a.mod.GenerateECKeypair(sh, keyLabel, lengthOrCurve, extractable, false)
+		objectHandle, err = a.mod.GenerateECKeypair(sh, keyLabel, objectID, lengthOrCurve, extractable, false)
 	case "AES":
-		_, err = a.mod.GenerateAESKey(sh, keyLabel, length, extractable, false)
+		objectHandle, err = a.mod.GenerateAESKey(sh, keyLabel, objectID, length, extractable, false)
 	case "DES", "2DES", "3DES":
-		_, err = a.mod.GenerateDESKey(sh, keyLabel, length, extractable, false)
+		objectHandle, err = a.mod.GenerateDESKey(sh, keyLabel, objectID, length, extractable, false)
 	default:
 		err = fmt.Errorf("unrecognized algorithm %s", algorithm)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("generate %s key with parameter %s: %w", algorithm, lengthOrCurve, err)
+	}
+	if err := a.printObjectID(sh, objectHandle); err != nil {
+		a.log.Warn("Failed to read generated object ID", a.log.Args("error", err))
 	}
 
 	pterm.Info.Printfln("Generated Key\\s in %dms", time.Since(start).Milliseconds())
@@ -267,6 +275,17 @@ func (a *App) importKey() error {
 	if err != nil {
 		return err
 	}
+	objectID, err := a.promptObjectID()
+	if err != nil {
+		return err
+	}
+	extractable := false
+	if objectType == "PrivateKey" || objectType == "SecretKey" {
+		extractable, err = a.interactiveConfirm.Show("Extractable")
+		if err != nil {
+			return err
+		}
+	}
 
 	rawToken, err := a.interactiveText.WithMultiLine(true).Show(fmt.Sprintf("Enter %q", objectType))
 	if err != nil {
@@ -283,6 +302,7 @@ func (a *App) importKey() error {
 
 	start := time.Now()
 
+	var objectHandle pkcs11.ObjectHandle
 	switch objectType {
 	case "Certificate":
 		block, parseErr := parsePEMBlock(rawToken, objectType)
@@ -293,7 +313,7 @@ func (a *App) importKey() error {
 		if parseErr != nil {
 			return parseErr
 		}
-		_, err = a.mod.ImportCertificate(sh, certificate, keyLabel, false)
+		objectHandle, err = a.mod.ImportCertificate(sh, certificate, keyLabel, objectID, false)
 	case "PublicKey":
 		block, parseErr := parsePEMBlock(rawToken, objectType)
 		if parseErr != nil {
@@ -308,7 +328,7 @@ func (a *App) importKey() error {
 			return detectionErr
 		}
 		pterm.Info.Printfln("Detected Algorithm: %s", algorithm)
-		_, err = a.mod.ImportPublicKey(sh, publicKey, keyLabel, false)
+		objectHandle, err = a.mod.ImportPublicKey(sh, publicKey, keyLabel, objectID, false)
 	case "PrivateKey":
 		block, parseErr := parsePEMBlock(rawToken, objectType)
 		if parseErr != nil {
@@ -323,7 +343,7 @@ func (a *App) importKey() error {
 			return detectionErr
 		}
 		pterm.Info.Printfln("Detected Algorithm: %s", algorithm)
-		_, err = a.mod.ImportPrivateKey(sh, block.Bytes, keyLabel, false, algorithm)
+		objectHandle, err = a.mod.ImportPrivateKey(sh, block.Bytes, keyLabel, objectID, algorithm, extractable, false)
 	case "SecretKey":
 		algorithm, promptErr := a.interactiveSelect.WithOptions(a.secretKeyAlgorithms).Show("Select Algorithm")
 		if promptErr != nil {
@@ -333,12 +353,15 @@ func (a *App) importKey() error {
 		if decodeErr != nil {
 			return fmt.Errorf("secret key not in HEX string format: %w", decodeErr)
 		}
-		_, err = a.mod.ImportSecretKey(sh, secretKey, keyLabel, false, algorithm)
+		objectHandle, err = a.mod.ImportSecretKey(sh, secretKey, keyLabel, objectID, algorithm, extractable, false)
 	default:
 		return fmt.Errorf("unrecognized object type %s", objectType)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("import %s: %w", objectType, err)
+	}
+	if err := a.printObjectID(sh, objectHandle); err != nil {
+		a.log.Warn("Failed to read imported object ID", a.log.Args("error", err))
 	}
 
 	pterm.Info.Printfln("Imported %q in %dms", objectType, time.Since(start).Milliseconds())
@@ -374,6 +397,35 @@ func (a *App) promptSlotSelection() (uint, error) {
 	}
 
 	return 0, errors.New("slot not selected")
+}
+
+func (a *App) promptObjectID() ([]byte, error) {
+	raw, err := a.interactiveText.Show("Object ID (HEX, blank to generate)")
+	if err != nil {
+		return nil, err
+	}
+
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	objectID, err := hex.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("object ID must be hexadecimal: %w", err)
+	}
+	return objectID, nil
+}
+
+func (a *App) printObjectID(sh pkcs11.SessionHandle, objectHandle pkcs11.ObjectHandle) error {
+	attributes, err := a.mod.Ctx.GetAttributeValue(sh, objectHandle, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_ID, nil),
+	})
+	if err != nil {
+		return err
+	}
+	pterm.Info.Printfln("Object ID: %X", attributes[0].Value)
+	return nil
 }
 
 func (a *App) getAttributeValue(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]*pkcs11.Attribute, error) {

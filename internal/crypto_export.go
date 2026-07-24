@@ -129,7 +129,7 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) (
 		return nil, err
 	}
 
-	wrapKey, err := p.ImportPublicKey(sh, &priv.PublicKey, time.Now().Format(time.DateTime), true)
+	wrapKey, err := p.ImportPublicKey(sh, &priv.PublicKey, time.Now().Format(time.DateTime), nil, true)
 	if err != nil {
 		return nil, fmt.Errorf("wrapping key import error: %w", err)
 	}
@@ -154,7 +154,7 @@ func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) 
 
 	// Generate Ephemeral AES KEK
 	wrapKeyName := "KEK-" + time.Now().Format(time.DateTime)
-	wrapKey, err := p.GenerateAESKey(sh, wrapKeyName, 256, true, true)
+	wrapKey, err := p.GenerateAESKey(sh, wrapKeyName, nil, 256, true, true)
 	if err != nil {
 		return nil, err
 	}
