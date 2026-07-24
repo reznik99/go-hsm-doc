@@ -71,19 +71,14 @@ func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string,
 }
 
 // ImportSecretKey imports an AES/DES/3DES Secret Key into the HSM using an ephemeral RSA 2048 wrapping key
-func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel string, ephemeral bool, algorithm string) (pkcs11.ObjectHandle, error) {
+func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel string, ephemeral bool, algorithm string) (handle pkcs11.ObjectHandle, err error) {
 	// Generate Ephemeral RSA wrapping keypair and extract the public key
 	wrappingKeyHandle, unwrappingKeyHandle, err := p.GenerateRSAKeypair(sh, time.Now().Format(time.DateTime), 2048, false, true)
 	if err != nil {
 		return 0, fmt.Errorf("wrapping key generation error: %w", err)
 	}
 	defer func() {
-		if err := p.Ctx.DestroyObject(sh, wrappingKeyHandle); err != nil {
-			p.logger.Error("Error destroying ephemeral wrapping key", p.logger.Args("", err))
-		}
-		if err := p.Ctx.DestroyObject(sh, unwrappingKeyHandle); err != nil {
-			p.logger.Error("Error destroying ephemeral unwrapping key", p.logger.Args("", err))
-		}
+		err = errors.Join(err, p.destroyObjects(sh, wrappingKeyHandle, unwrappingKeyHandle))
 	}()
 
 	wrappingKeyPEM, err := p.ExportPublicKeyRSA(sh, wrappingKeyHandle)
@@ -91,8 +86,8 @@ func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel s
 		return 0, fmt.Errorf("wrapping key export error: %w", err)
 	}
 	b, rest := pem.Decode(wrappingKeyPEM)
-	if len(rest) != 0 {
-		return 0, fmt.Errorf("wrapping key pem parsing error: %w", err)
+	if b == nil || len(rest) != 0 {
+		return 0, errors.New("wrapping key PEM parsing error")
 	}
 	wrappingKeyAny, err := x509.ParsePKIXPublicKey(b.Bytes)
 	if err != nil {
@@ -133,7 +128,7 @@ func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel s
 }
 
 // ImportPrivateKey imports an RSA/EC Private Key into the HSM using an ephemeral AES 256 wrapping key
-func (p *P11) ImportPrivateKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel string, ephemeral bool, algorithm string) (pkcs11.ObjectHandle, error) {
+func (p *P11) ImportPrivateKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel string, ephemeral bool, algorithm string) (handle pkcs11.ObjectHandle, err error) {
 	// Generate AES wrapping Key
 	var wrappingKey = make([]byte, 32)
 	if _, err := rand.Read(wrappingKey); err != nil {
@@ -157,9 +152,7 @@ func (p *P11) ImportPrivateKey(sh pkcs11.SessionHandle, rawKey []byte, keylabel 
 		return 0, err
 	}
 	defer func() {
-		if err := p.Ctx.DestroyObject(sh, wrappingKeyHandle); err != nil {
-			p.logger.Error("Error destroying ephemeral wrapping key", p.logger.Args("", err))
-		}
+		err = errors.Join(err, p.destroyObjects(sh, wrappingKeyHandle))
 	}()
 
 	// Import/unwrap user key

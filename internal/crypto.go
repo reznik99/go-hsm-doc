@@ -5,19 +5,16 @@ import (
 	"fmt"
 
 	"github.com/miekg/pkcs11"
-	"github.com/pterm/pterm"
 )
 
 type P11 struct {
 	Ctx      *pkcs11.Ctx
 	Sessions map[uint]pkcs11.SessionHandle
-	logger   pterm.Logger
 }
 
-func NewP11(modulePath string, logger pterm.Logger) (*P11, error) {
+func NewP11(modulePath string) (*P11, error) {
 	module := &P11{
 		Sessions: map[uint]pkcs11.SessionHandle{},
-		logger:   logger,
 	}
 
 	module.Ctx = pkcs11.New(modulePath)
@@ -35,6 +32,7 @@ func NewP11(modulePath string, logger pterm.Logger) (*P11, error) {
 
 func (p *P11) GetSlots() (map[uint]pkcs11.TokenInfo, error) {
 	output := map[uint]pkcs11.TokenInfo{}
+	var getSlotErr error
 
 	slots, err := p.Ctx.GetSlotList(true)
 	if err != nil {
@@ -44,7 +42,7 @@ func (p *P11) GetSlots() (map[uint]pkcs11.TokenInfo, error) {
 	for _, slotID := range slots {
 		ti, err := p.Ctx.GetTokenInfo(slotID)
 		if err != nil {
-			p.logger.Warn("Error getting slot info", p.logger.Args("", err))
+			getSlotErr = errors.Join(getSlotErr, fmt.Errorf("get token info for slot %d: %w", slotID, err))
 			continue
 		}
 		if ti.Label == "" {
@@ -53,26 +51,23 @@ func (p *P11) GetSlots() (map[uint]pkcs11.TokenInfo, error) {
 		output[slotID] = ti
 	}
 
-	return output, nil
+	return output, getSlotErr
 }
 
-func (p *P11) FindObjects(slotID uint, template []*pkcs11.Attribute) ([]pkcs11.ObjectHandle, error) {
+func (p *P11) FindObjects(slotID uint, template []*pkcs11.Attribute) (objects []pkcs11.ObjectHandle, err error) {
 	sh, ok := p.Sessions[slotID]
 	if !ok {
 		return nil, fmt.Errorf("session doesn't exist for slot: %d", slotID)
 	}
 
-	err := p.Ctx.FindObjectsInit(sh, template)
+	err = p.Ctx.FindObjectsInit(sh, template)
 	if err != nil {
 		return nil, fmt.Errorf("find objects init error: %w", err)
 	}
 	defer func() {
-		if err := p.Ctx.FindObjectsFinal(sh); err != nil {
-			p.logger.Error("Error finalizing object search", p.logger.Args("", err))
-		}
+		err = errors.Join(err, p.Ctx.FindObjectsFinal(sh))
 	}()
 
-	var objects []pkcs11.ObjectHandle
 	for {
 		found, _, err := p.Ctx.FindObjects(sh, 100)
 		if err != nil {
@@ -103,13 +98,25 @@ func (p *P11) OpenSession(slotID uint) (pkcs11.SessionHandle, error) {
 }
 
 func (p *P11) CloseAllSessions() error {
-	for _, sh := range p.Sessions {
+	var closeErr error
+	for slotID, sh := range p.Sessions {
 		err := p.Ctx.CloseSession(sh)
 		if err != nil {
-			pterm.Warning.Printfln("Failed to close session %d: %s", sh, err)
+			closeErr = errors.Join(closeErr, fmt.Errorf("close session for slot %d: %w", slotID, err))
 		}
 	}
-	return nil
+	clear(p.Sessions)
+	return closeErr
+}
+
+func (p *P11) destroyObjects(sh pkcs11.SessionHandle, handles ...pkcs11.ObjectHandle) error {
+	var destroyErr error
+	for _, handle := range handles {
+		if err := p.Ctx.DestroyObject(sh, handle); err != nil {
+			destroyErr = errors.Join(destroyErr, fmt.Errorf("destroy object %d: %w", handle, err))
+		}
+	}
+	return destroyErr
 }
 
 func (p *P11) Login(slotID uint, pin string) error {

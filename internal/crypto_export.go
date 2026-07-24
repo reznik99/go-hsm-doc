@@ -7,6 +7,7 @@ import (
 	"crypto/sha1" //nolint:gosec // OAEP key-wrapping hash, kept for broad HSM compatibility
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -122,7 +123,7 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 }
 
 // ExportSecretKey extracts, parses and prints an AES/DES/3DES key using an ephemeral RSA_OAEP wrapping key.
-func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) ([]byte, error) {
+func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) (key []byte, err error) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		return nil, err
@@ -133,9 +134,7 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) (
 		return nil, fmt.Errorf("wrapping key import error: %w", err)
 	}
 	defer func() {
-		if err := p.Ctx.DestroyObject(sh, wrapKey); err != nil {
-			p.logger.Error("Error destroying ephemeral wrapping key", p.logger.Args("", err))
-		}
+		err = errors.Join(err, p.destroyObjects(sh, wrapKey))
 	}()
 
 	// Wrap AES key with imported wrapping key
@@ -151,7 +150,7 @@ func (p *P11) ExportSecretKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) (
 }
 
 // ExportPrivateKey extracts, parses and prints an RSA/EC key using an ephemeral AES wrapping key.
-func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) ([]byte, error) {
+func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) (key []byte, err error) {
 
 	// Generate Ephemeral AES KEK
 	wrapKeyName := "KEK-" + time.Now().Format(time.DateTime)
@@ -160,9 +159,7 @@ func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) 
 		return nil, err
 	}
 	defer func() {
-		if err := p.Ctx.DestroyObject(sh, wrapKey); err != nil {
-			p.logger.Error("Error destroying ephemeral wrapping key", p.logger.Args("", err))
-		}
+		err = errors.Join(err, p.destroyObjects(sh, wrapKey))
 	}()
 
 	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_AES_KEY_WRAP_PAD, nil)}
@@ -183,7 +180,7 @@ func (p *P11) ExportPrivateKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) 
 		return nil, err
 	}
 
-	key, err := kwp.Unwrap(wrappedKey)
+	key, err = kwp.Unwrap(wrappedKey)
 	if err != nil {
 		return nil, err
 	}

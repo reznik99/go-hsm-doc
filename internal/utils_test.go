@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -39,6 +40,10 @@ func TestStringToAttribute(t *testing.T) {
 			}
 			if attr.Type != pkcs11.CKA_KEY_TYPE {
 				t.Errorf("type = %d, want CKA_KEY_TYPE", attr.Type)
+			}
+			want := pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, c.want)
+			if !bytes.Equal(attr.Value, want.Value) {
+				t.Errorf("value = %x, want %x", attr.Value, want.Value)
 			}
 		})
 	}

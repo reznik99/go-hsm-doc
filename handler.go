@@ -17,89 +17,70 @@ import (
 	"github.com/reznik99/go-hsm-doc/internal"
 )
 
-var (
-	keyLengths = map[string][]string{
-		"RSA":  {"1024", "2048", "4096"},
-		"EC":   {"P224", "P256", "P384", "P521"},
-		"AES":  {"128", "192", "256"},
-		"3DES": {"128", "192"},
-		"DES":  {"64"},
-	}
-	algorithmsByObjectType = map[string][]string{
-		"SecretKey":  {"AES", "3DES", "DES"},
-		"PrivateKey": {"RSA", "EC"},
-		"PublicKey":  {"RSA", "EC"},
-	}
-	algorithms    = []string{"RSA", "EC", "AES", "3DES", "DES"}
-	keyOperations = []string{
-		"Go Back",
-		"Info",
-		"Export",
-		"Delete",
-	}
-	objectTypes = []string{"Certificate", "PublicKey", "PrivateKey", "SecretKey"}
-)
-
 // Handlers for Commands
 
-func ListHSMInfo(mod *internal.P11) error {
-	info, err := mod.Ctx.GetInfo()
+func (a *App) listHSMInfo() error {
+	info, err := a.mod.Ctx.GetInfo()
 	if err != nil {
 		return err
 	}
-	logger.Info("",
-		logger.Args("ManufacturerID", info.ManufacturerID),
-		logger.Args("LibraryDescription", info.LibraryDescription),
-		logger.Args("LibraryVersion", fmt.Sprintf("v%d.%d", info.LibraryVersion.Major, info.LibraryVersion.Minor)),
-		logger.Args("CryptokiVersion", fmt.Sprintf("v%d.%d", info.CryptokiVersion.Major, info.CryptokiVersion.Minor)),
-		logger.Args("Flags", info.Flags),
+	a.log.Info("HSM info",
+		a.log.Args("ManufacturerID", info.ManufacturerID),
+		a.log.Args("LibraryDescription", info.LibraryDescription),
+		a.log.Args("LibraryVersion", fmt.Sprintf("v%d.%d", info.LibraryVersion.Major, info.LibraryVersion.Minor)),
+		a.log.Args("CryptokiVersion", fmt.Sprintf("v%d.%d", info.CryptokiVersion.Major, info.CryptokiVersion.Minor)),
+		a.log.Args("Flags", info.Flags),
 	)
 
 	return nil
 }
 
-func ListSlots(mod *internal.P11) error {
-	slots, err := mod.GetSlots()
+func (a *App) listSlots() error {
+	slots, err := a.mod.GetSlots()
 	if err != nil {
-		return err
+		a.log.Warn("Some slots could not be read", a.log.Args("error", err))
+		if len(slots) == 0 {
+			return err
+		}
 	}
 	for slotID, slot := range slots {
-		si, err := mod.Ctx.GetSlotInfo(slotID)
+		si, err := a.mod.Ctx.GetSlotInfo(slotID)
 		if err != nil {
+			a.log.Warn("Failed to get slot info", a.log.Args("slot_id", slotID), a.log.Args("error", err))
 			continue
 		}
-		logger.Info(fmt.Sprintf("-> %s [%d]", slot.Label, slotID),
-			logger.Args("Label", slot.Label),
-			logger.Args("Model", slot.Model),
-			logger.Args("SerialNumber", slot.SerialNumber),
-			logger.Args("MaxRwSessionCount", slot.MaxRwSessionCount),
-			logger.Args("ManufacturerID", si.ManufacturerID),
-			logger.Args("SlotDescription", si.SlotDescription),
-			logger.Args("HardwareVersion", fmt.Sprintf("v%d.%d", si.HardwareVersion.Major, si.HardwareVersion.Minor)),
-			logger.Args("FirmwareVersion", fmt.Sprintf("v%d.%d", si.FirmwareVersion.Major, si.FirmwareVersion.Minor)),
+		a.log.Info(fmt.Sprintf("-> %s [%d]", slot.Label, slotID),
+			a.log.Args("Label", slot.Label),
+			a.log.Args("Model", slot.Model),
+			a.log.Args("SerialNumber", slot.SerialNumber),
+			a.log.Args("MaxRwSessionCount", slot.MaxRwSessionCount),
+			a.log.Args("ManufacturerID", si.ManufacturerID),
+			a.log.Args("SlotDescription", si.SlotDescription),
+			a.log.Args("HardwareVersion", fmt.Sprintf("v%d.%d", si.HardwareVersion.Major, si.HardwareVersion.Minor)),
+			a.log.Args("FirmwareVersion", fmt.Sprintf("v%d.%d", si.FirmwareVersion.Major, si.FirmwareVersion.Minor)),
 		)
 	}
 	return nil
 }
 
-func ListTokens(mod *internal.P11) error {
-	selectedSlot, err := PromptSlotSelection(mod)
+func (a *App) listTokens() error {
+	selectedSlot, err := a.promptSlotSelection()
 	if err != nil {
 		return err
 	}
 
 	// Open session and login to slot
-	sh, err := mod.OpenSession(selectedSlot)
+	sh, err := a.mod.OpenSession(selectedSlot)
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
 	}
-	if err = Login(mod, selectedSlot); err != nil {
+	if err = a.login(selectedSlot); err != nil {
 		return err
 	}
 
 	start := time.Now()
 
-	objects, err := mod.FindObjects(selectedSlot, []*pkcs11.Attribute{})
+	objects, err := a.mod.FindObjects(selectedSlot, []*pkcs11.Attribute{})
 	if err != nil {
 		return err
 	}
@@ -108,8 +89,8 @@ func ListTokens(mod *internal.P11) error {
 	}
 
 	for _, o := range objects {
-		if err := PrintObjectInfo(mod, sh, o); err != nil {
-			logger.Error("Error printing object info", logger.Args("", err))
+		if err := a.printObjectInfo(sh, o); err != nil {
+			a.log.Error("Failed to print object info", a.log.Args("object_handle", o), a.log.Args("error", err))
 		}
 	}
 
@@ -118,22 +99,22 @@ func ListTokens(mod *internal.P11) error {
 	return nil
 }
 
-func FindToken(mod *internal.P11) error {
-	selectedSlot, err := PromptSlotSelection(mod)
+func (a *App) findToken() error {
+	selectedSlot, err := a.promptSlotSelection()
 	if err != nil {
 		return err
 	}
 
 	// Open session and login to slot
-	sh, err := mod.OpenSession(selectedSlot)
+	sh, err := a.mod.OpenSession(selectedSlot)
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
 	}
-	if err = Login(mod, selectedSlot); err != nil {
+	if err = a.login(selectedSlot); err != nil {
 		return err
 	}
 
-	objects, err := mod.FindObjects(selectedSlot, []*pkcs11.Attribute{})
+	objects, err := a.mod.FindObjects(selectedSlot, []*pkcs11.Attribute{})
 	if err != nil {
 		return fmt.Errorf("find objects error: %w", err)
 	}
@@ -144,21 +125,21 @@ func FindToken(mod *internal.P11) error {
 	options := []string{}
 	handleMap := map[string]pkcs11.ObjectHandle{}
 	for _, o := range objects {
-		attribs, err := GetAttributeValue(mod, sh, o)
+		attribs, err := a.getAttributeValue(sh, o)
 		if err != nil {
-			logger.Error("Failed to read token attributes", logger.Args("handle", o), logger.Args("", err))
+			a.log.Error("Failed to read token attributes", a.log.Args("object_handle", o), a.log.Args("error", err))
 			continue
 		}
 		option := fmt.Sprintf("[%02d] %s %s %s", o,
-			PadString(internal.AttributeToString(attribs[1]), 4),
-			PadString(internal.AttributeToString(attribs[2]), 11),
+			padString(internal.AttributeToString(attribs[1]), 4),
+			padString(internal.AttributeToString(attribs[2]), 11),
 			internal.AttributeToString(attribs[0]),
 		)
 		options = append(options, option)
 		handleMap[option] = o
 	}
 
-	selected, err := InteractiveSelect.WithMaxHeight(15).WithOptions(options).Show("Select Key")
+	selected, err := a.interactiveSelect.WithMaxHeight(15).WithOptions(options).Show("Select Key")
 	if err != nil {
 		return err
 	}
@@ -169,7 +150,7 @@ func FindToken(mod *internal.P11) error {
 	}
 
 	for {
-		operation, err := InteractiveSelect.WithOptions(keyOperations).Show("Select operation")
+		operation, err := a.interactiveSelect.WithOptions(a.keyOperations).Show("Select operation")
 		if err != nil {
 			return err
 		}
@@ -178,11 +159,11 @@ func FindToken(mod *internal.P11) error {
 		case "Go Back":
 			return nil
 		case "Info":
-			err = PrintObjectInfo(mod, sh, oh)
+			err = a.printObjectInfo(sh, oh)
 		case "Export":
-			_, err = ExportToken(mod, sh, oh)
+			_, err = a.exportToken(sh, oh)
 		case "Delete":
-			return DeleteToken(mod, sh, oh)
+			return a.deleteToken(sh, oh)
 		}
 		if err != nil {
 			return err
@@ -192,44 +173,43 @@ func FindToken(mod *internal.P11) error {
 	}
 }
 
-func GenerateKey(mod *internal.P11) error {
-
+func (a *App) generateKey() error {
 	// Select Slot for key
-	selectedSlot, err := PromptSlotSelection(mod)
+	selectedSlot, err := a.promptSlotSelection()
 	if err != nil {
 		return err
 	}
 
 	// Select Key Algorithm
-	algorithm, err := InteractiveSelect.WithOptions(algorithms).Show("Select Algorithm")
+	algorithm, err := a.interactiveSelect.WithOptions(a.algorithms).Show("Select Algorithm")
 	if err != nil {
 		return err
 	}
 
 	// Select Key length
-	lengthOrCurve, err := InteractiveSelect.WithOptions(keyLengths[algorithm]).Show("Select Keylength")
+	lengthOrCurve, err := a.interactiveSelect.WithOptions(a.keyLengths[algorithm]).Show("Select Keylength")
 	if err != nil {
 		return err
 	}
 	length, _ := strconv.Atoi(lengthOrCurve)
 
 	// Select Key Label for key
-	keyLabel, err := InteractiveText.Show("Key Label")
+	keyLabel, err := a.interactiveText.Show("Key Label")
 	if err != nil {
 		return err
 	}
 
-	extractable, err := InteractiveConfirm.Show("Extractable")
+	extractable, err := a.interactiveConfirm.Show("Extractable")
 	if err != nil {
 		return err
 	}
 
 	// Open session and login to slot
-	sh, err := mod.OpenSession(selectedSlot)
+	sh, err := a.mod.OpenSession(selectedSlot)
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
 	}
-	if err = Login(mod, selectedSlot); err != nil {
+	if err = a.login(selectedSlot); err != nil {
 		return err
 	}
 
@@ -237,13 +217,13 @@ func GenerateKey(mod *internal.P11) error {
 
 	switch algorithm {
 	case "RSA":
-		_, _, err = mod.GenerateRSAKeypair(sh, keyLabel, length, extractable, false)
+		_, _, err = a.mod.GenerateRSAKeypair(sh, keyLabel, length, extractable, false)
 	case "EC":
-		_, err = mod.GenerateECKeypair(sh, keyLabel, lengthOrCurve, extractable, false)
+		_, err = a.mod.GenerateECKeypair(sh, keyLabel, lengthOrCurve, extractable, false)
 	case "AES":
-		_, err = mod.GenerateAESKey(sh, keyLabel, length, extractable, false)
+		_, err = a.mod.GenerateAESKey(sh, keyLabel, length, extractable, false)
 	case "DES", "2DES", "3DES":
-		_, err = mod.GenerateDESKey(sh, keyLabel, length, extractable, false)
+		_, err = a.mod.GenerateDESKey(sh, keyLabel, length, extractable, false)
 	default:
 		err = fmt.Errorf("unrecognized algorithm %s", algorithm)
 	}
@@ -256,17 +236,15 @@ func GenerateKey(mod *internal.P11) error {
 	return nil
 }
 
-func ImportKey(mod *internal.P11) error {
-	var err error
-
+func (a *App) importKey() error {
 	// Select Slot for key
-	selectedSlot, err := PromptSlotSelection(mod)
+	selectedSlot, err := a.promptSlotSelection()
 	if err != nil {
 		return err
 	}
 
 	// Select Object Type
-	objectType, err := InteractiveSelect.WithOptions(objectTypes).Show("Object Type")
+	objectType, err := a.interactiveSelect.WithOptions(a.objectTypes).Show("Object Type")
 	if err != nil {
 		return err
 	}
@@ -274,20 +252,20 @@ func ImportKey(mod *internal.P11) error {
 	// Select Key Algorithm
 	var algorithm = "N/A"
 	if objectType != "Certificate" {
-		algorithm, err = InteractiveSelect.WithOptions(algorithmsByObjectType[objectType]).Show("Select Algorithm")
+		algorithm, err = a.interactiveSelect.WithOptions(a.algorithmsByObjectType[objectType]).Show("Select Algorithm")
 		if err != nil {
 			return err
 		}
 	}
 
 	// Select Key Label for key
-	keyLabel, err := InteractiveText.Show("Key Label")
+	keyLabel, err := a.interactiveText.Show("Key Label")
 	if err != nil {
 		return err
 	}
 
 	// Get raw key value from user
-	rawToken, err := InteractiveText.WithMultiLine(true).Show(fmt.Sprintf("Enter %q", objectType))
+	rawToken, err := a.interactiveText.WithMultiLine(true).Show(fmt.Sprintf("Enter %q", objectType))
 	if err != nil {
 		return err
 	}
@@ -295,11 +273,11 @@ func ImportKey(mod *internal.P11) error {
 	rawToken = strings.ReplaceAll(rawToken, "\r", "\r\n")
 
 	// Open session and login to slot
-	sh, err := mod.OpenSession(selectedSlot)
+	sh, err := a.mod.OpenSession(selectedSlot)
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
 	}
-	if err = Login(mod, selectedSlot); err != nil {
+	if err = a.login(selectedSlot); err != nil {
 		return err
 	}
 
@@ -315,7 +293,7 @@ func ImportKey(mod *internal.P11) error {
 		if err != nil {
 			return err
 		}
-		_, err = mod.ImportCertificate(sh, cert, keyLabel, false)
+		_, err = a.mod.ImportCertificate(sh, cert, keyLabel, false)
 		if err != nil {
 			return err
 		}
@@ -328,7 +306,7 @@ func ImportKey(mod *internal.P11) error {
 		if err != nil {
 			return err
 		}
-		_, err = mod.ImportPublicKey(sh, pub, keyLabel, false)
+		_, err = a.mod.ImportPublicKey(sh, pub, keyLabel, false)
 		if err != nil {
 			return err
 		}
@@ -337,7 +315,7 @@ func ImportKey(mod *internal.P11) error {
 		if b == nil || len(rest) != 0 {
 			return fmt.Errorf("failed to decode PEM %s", objectType)
 		}
-		_, err = mod.ImportPrivateKey(sh, b.Bytes, keyLabel, false, algorithm)
+		_, err = a.mod.ImportPrivateKey(sh, b.Bytes, keyLabel, false, algorithm)
 		if err != nil {
 			return err
 		}
@@ -346,7 +324,7 @@ func ImportKey(mod *internal.P11) error {
 		if err != nil {
 			return fmt.Errorf("secret key not in HEX string format: %w", err)
 		}
-		_, err = mod.ImportSecretKey(sh, key, keyLabel, false, algorithm)
+		_, err = a.mod.ImportSecretKey(sh, key, keyLabel, false, algorithm)
 		if err != nil {
 			return err
 		}
@@ -359,18 +337,21 @@ func ImportKey(mod *internal.P11) error {
 
 // Helper functions
 
-func PromptSlotSelection(mod *internal.P11) (uint, error) {
+func (a *App) promptSlotSelection() (uint, error) {
 	options := []string{}
-	slots, err := mod.GetSlots()
+	slots, err := a.mod.GetSlots()
 	if err != nil {
-		return 0, err
+		a.log.Warn("Some slots could not be read", a.log.Args("error", err))
+		if len(slots) == 0 {
+			return 0, err
+		}
 	}
 
 	for _, slot := range slots {
 		options = append(options, slot.Label)
 	}
 
-	slotLabel, err := InteractiveSelect.WithOptions(options).Show("Select Slot")
+	slotLabel, err := a.interactiveSelect.WithOptions(options).Show("Select Slot")
 	if err != nil {
 		return 0, fmt.Errorf("slot selection error: %w", err)
 	}
@@ -384,14 +365,14 @@ func PromptSlotSelection(mod *internal.P11) (uint, error) {
 	return 0, errors.New("slot not selected")
 }
 
-func GetAttributeValue(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]*pkcs11.Attribute, error) {
-	attribs, err := mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+func (a *App) getAttributeValue(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]*pkcs11.Attribute, error) {
+	attribs, err := a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
 	})
 	if err != nil {
-		attribs, err = mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+		attribs, err = a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
 			pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
 			pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
 		})
@@ -405,29 +386,29 @@ func GetAttributeValue(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.Obje
 	return attribs, nil
 }
 
-func PrintObjectInfo(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
-	attribs, err := GetAttributeValue(mod, sh, o)
+func (a *App) printObjectInfo(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
+	attribs, err := a.getAttributeValue(sh, o)
 	if err != nil {
 		return err
 	}
-	logger.Info(fmt.Sprintf("[%02d]", o),
-		logger.Args("Algorithm", PadString(internal.AttributeToString(attribs[1]), 4)),
-		logger.Args("Type", PadString(internal.AttributeToString(attribs[2]), 11)),
-		logger.Args("Label", internal.AttributeToString(attribs[0])),
+	a.log.Info(fmt.Sprintf("[%02d]", o),
+		a.log.Args("Algorithm", padString(internal.AttributeToString(attribs[1]), 4)),
+		a.log.Args("Type", padString(internal.AttributeToString(attribs[2]), 11)),
+		a.log.Args("Label", internal.AttributeToString(attribs[0])),
 	)
 	return nil
 }
 
-func DeleteToken(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
-	confirmed, err := InteractiveConfirm.Show("Delete selected object?")
+func (a *App) deleteToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
+	confirmed, err := a.interactiveConfirm.Show("Delete selected object?")
 	if err != nil || !confirmed {
 		return err
 	}
-	return mod.Ctx.DestroyObject(sh, o)
+	return a.mod.Ctx.DestroyObject(sh, o)
 }
 
-func ExportToken(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byte, error) {
-	attribs, err := mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byte, error) {
+	attribs, err := a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
 	})
@@ -441,16 +422,16 @@ func ExportToken(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHand
 	var token []byte
 	switch objectType {
 	case pkcs11.CKO_CERTIFICATE:
-		token, err = mod.ExportCertificate(sh, o)
+		token, err = a.mod.ExportCertificate(sh, o)
 		fmt.Printf("%s\n", token)
 	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY:
-		token, err = mod.ExportPublicKey(sh, o, algorithmType)
+		token, err = a.mod.ExportPublicKey(sh, o, algorithmType)
 		fmt.Printf("%s\n", token)
 	case pkcs11.CKO_PRIVATE_KEY:
-		token, err = mod.ExportPrivateKey(sh, o)
+		token, err = a.mod.ExportPrivateKey(sh, o)
 		fmt.Printf("%s\n", token)
 	case pkcs11.CKO_SECRET_KEY:
-		token, err = mod.ExportSecretKey(sh, o)
+		token, err = a.mod.ExportSecretKey(sh, o)
 		fmt.Printf("%X\n", token)
 	default:
 		return nil, fmt.Errorf("unrecognized object type: %d", objectType)
@@ -458,13 +439,13 @@ func ExportToken(mod *internal.P11, sh pkcs11.SessionHandle, o pkcs11.ObjectHand
 	return token, err
 }
 
-func Login(mod *internal.P11, slotID uint) error {
-	pin, err := InteractiveText.WithMask("*").Show("Slot/Partition PIN (optional)")
+func (a *App) login(slotID uint) error {
+	pin, err := a.interactiveText.WithMask("*").Show("Slot/Partition PIN (optional)")
 	if err != nil {
 		return fmt.Errorf("error reading Slot/Partition PIN: %w", err)
 	}
 	if pin != "" {
-		err = mod.Login(slotID, pin)
+		err = a.mod.Login(slotID, pin)
 		if err != nil && !errors.Is(err, pkcs11.Error(pkcs11.CKR_USER_ALREADY_LOGGED_IN)) {
 			return err
 		}
@@ -472,8 +453,8 @@ func Login(mod *internal.P11, slotID uint) error {
 	return nil
 }
 
-// PadString returns the string right-padded with specified number of spaces
-func PadString(value string, number int) string {
+// padString returns the string right-padded with specified number of spaces
+func padString(value string, number int) string {
 	number = int(math.Abs(float64(number - len(value))))
 	padding := strings.Repeat(" ", number)
 	return fmt.Sprintf("%s%s", value, padding)
