@@ -4,7 +4,6 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"math"
@@ -174,20 +173,33 @@ func (a *App) findToken() error {
 }
 
 func (a *App) generateKey() error {
-	// Select Slot for key
 	selectedSlot, err := a.promptSlotSelection()
 	if err != nil {
 		return err
 	}
 
-	// Select Key Algorithm
-	algorithm, err := a.interactiveSelect.WithOptions(a.algorithms).Show("Select Algorithm")
+	capabilities, capabilityErr := a.getSlotCapabilities(selectedSlot)
+	if capabilityErr != nil {
+		a.log.Warn("Some slot capabilities could not be loaded", a.log.Args("slot_id", selectedSlot), a.log.Args("error", capabilityErr))
+	}
+	generationOptions := supportedKeyGenerationOptions(capabilities)
+	if len(generationOptions) == 0 {
+		return errors.Join(errors.New("slot has no supported key generation mechanisms"), capabilityErr)
+	}
+
+	algorithms := make([]string, 0, len(generationOptions))
+	parametersByAlgorithm := make(map[string][]string, len(generationOptions))
+	for _, option := range generationOptions {
+		algorithms = append(algorithms, option.algorithm)
+		parametersByAlgorithm[option.algorithm] = option.parameters
+	}
+
+	algorithm, err := a.interactiveSelect.WithOptions(algorithms).Show("Select Algorithm")
 	if err != nil {
 		return err
 	}
 
-	// Select Key length
-	lengthOrCurve, err := a.interactiveSelect.WithOptions(a.keyLengths[algorithm]).Show("Select Keylength")
+	lengthOrCurve, err := a.interactiveSelect.WithOptions(parametersByAlgorithm[algorithm]).Show("Select Key Size or Curve")
 	if err != nil {
 		return err
 	}
@@ -237,42 +249,30 @@ func (a *App) generateKey() error {
 }
 
 func (a *App) importKey() error {
-	// Select Slot for key
 	selectedSlot, err := a.promptSlotSelection()
 	if err != nil {
 		return err
 	}
 
-	// Select Object Type
-	objectType, err := a.interactiveSelect.WithOptions(a.objectTypes).Show("Object Type")
+	capabilities, capabilityErr := a.getSlotCapabilities(selectedSlot)
+	if capabilityErr != nil {
+		a.log.Warn("Some slot capabilities could not be loaded", a.log.Args("slot_id", selectedSlot), a.log.Args("error", capabilityErr))
+	}
+	objectType, err := a.interactiveSelect.WithOptions(supportedImportObjectTypes(capabilities)).Show("Object Type")
 	if err != nil {
 		return err
 	}
 
-	// Select Key Algorithm
-	var algorithm = "N/A"
-	if objectType != "Certificate" {
-		algorithm, err = a.interactiveSelect.WithOptions(a.algorithmsByObjectType[objectType]).Show("Select Algorithm")
-		if err != nil {
-			return err
-		}
-	}
-
-	// Select Key Label for key
 	keyLabel, err := a.interactiveText.Show("Key Label")
 	if err != nil {
 		return err
 	}
 
-	// Get raw key value from user
 	rawToken, err := a.interactiveText.WithMultiLine(true).Show(fmt.Sprintf("Enter %q", objectType))
 	if err != nil {
 		return err
 	}
-	// TODO: This works for pasting key on Windows. Linux won't have carrige return so might break with pem.Decode
-	rawToken = strings.ReplaceAll(rawToken, "\r", "\r\n")
 
-	// Open session and login to slot
 	sh, err := a.mod.OpenSession(selectedSlot)
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
@@ -285,49 +285,60 @@ func (a *App) importKey() error {
 
 	switch objectType {
 	case "Certificate":
-		b, rest := pem.Decode([]byte(rawToken))
-		if b == nil || len(rest) != 0 {
-			return fmt.Errorf("failed to decode PEM %s", objectType)
+		block, parseErr := parsePEMBlock(rawToken, objectType)
+		if parseErr != nil {
+			return parseErr
 		}
-		cert, err := x509.ParseCertificate(b.Bytes)
-		if err != nil {
-			return err
+		certificate, parseErr := x509.ParseCertificate(block.Bytes)
+		if parseErr != nil {
+			return parseErr
 		}
-		_, err = a.mod.ImportCertificate(sh, cert, keyLabel, false)
-		if err != nil {
-			return err
-		}
+		_, err = a.mod.ImportCertificate(sh, certificate, keyLabel, false)
 	case "PublicKey":
-		b, rest := pem.Decode([]byte(rawToken))
-		if b == nil || len(rest) != 0 {
-			return fmt.Errorf("failed to decode PEM %s", objectType)
+		block, parseErr := parsePEMBlock(rawToken, objectType)
+		if parseErr != nil {
+			return parseErr
 		}
-		pub, err := x509.ParsePKIXPublicKey(b.Bytes)
-		if err != nil {
-			return err
+		publicKey, parseErr := x509.ParsePKIXPublicKey(block.Bytes)
+		if parseErr != nil {
+			return parseErr
 		}
-		_, err = a.mod.ImportPublicKey(sh, pub, keyLabel, false)
-		if err != nil {
-			return err
+		algorithm, detectionErr := detectKeyAlgorithm(publicKey)
+		if detectionErr != nil {
+			return detectionErr
 		}
+		pterm.Info.Printfln("Detected Algorithm: %s", algorithm)
+		_, err = a.mod.ImportPublicKey(sh, publicKey, keyLabel, false)
 	case "PrivateKey":
-		b, rest := pem.Decode([]byte(rawToken))
-		if b == nil || len(rest) != 0 {
-			return fmt.Errorf("failed to decode PEM %s", objectType)
+		block, parseErr := parsePEMBlock(rawToken, objectType)
+		if parseErr != nil {
+			return parseErr
 		}
-		_, err = a.mod.ImportPrivateKey(sh, b.Bytes, keyLabel, false, algorithm)
-		if err != nil {
-			return err
+		privateKey, parseErr := parsePrivateKey(block.Bytes)
+		if parseErr != nil {
+			return parseErr
 		}
+		algorithm, detectionErr := detectKeyAlgorithm(privateKey)
+		if detectionErr != nil {
+			return detectionErr
+		}
+		pterm.Info.Printfln("Detected Algorithm: %s", algorithm)
+		_, err = a.mod.ImportPrivateKey(sh, block.Bytes, keyLabel, false, algorithm)
 	case "SecretKey":
-		key, err := hex.DecodeString(rawToken)
-		if err != nil {
-			return fmt.Errorf("secret key not in HEX string format: %w", err)
+		algorithm, promptErr := a.interactiveSelect.WithOptions(a.secretKeyAlgorithms).Show("Select Algorithm")
+		if promptErr != nil {
+			return promptErr
 		}
-		_, err = a.mod.ImportSecretKey(sh, key, keyLabel, false, algorithm)
-		if err != nil {
-			return err
+		secretKey, decodeErr := hex.DecodeString(rawToken)
+		if decodeErr != nil {
+			return fmt.Errorf("secret key not in HEX string format: %w", decodeErr)
 		}
+		_, err = a.mod.ImportSecretKey(sh, secretKey, keyLabel, false, algorithm)
+	default:
+		return fmt.Errorf("unrecognized object type %s", objectType)
+	}
+	if err != nil {
+		return err
 	}
 
 	pterm.Info.Printfln("Imported %q in %dms", objectType, time.Since(start).Milliseconds())

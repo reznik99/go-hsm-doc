@@ -23,20 +23,18 @@ const (
 )
 
 type App struct {
-	version                string
-	log                    pterm.Logger
-	mod                    *internal.P11
-	interactiveText        *pterm.InteractiveTextInputPrinter
-	interactiveConfirm     *pterm.InteractiveConfirmPrinter
-	interactiveSelect      *pterm.InteractiveSelectPrinter
-	titlePrefix            pterm.Letters
-	title                  pterm.Letters
-	topLevelOptions        []string
-	keyLengths             map[string][]string
-	algorithmsByObjectType map[string][]string
-	algorithms             []string
-	keyOperations          []string
-	objectTypes            []string
+	version             string
+	log                 pterm.Logger
+	mod                 *internal.P11
+	interactiveText     *pterm.InteractiveTextInputPrinter
+	interactiveConfirm  *pterm.InteractiveConfirmPrinter
+	interactiveSelect   *pterm.InteractiveSelectPrinter
+	titlePrefix         pterm.Letters
+	title               pterm.Letters
+	topLevelOptions     []string
+	capabilities        map[uint]slotCapabilities
+	secretKeyAlgorithms []string
+	keyOperations       []string
 }
 
 func NewApp() *App {
@@ -55,22 +53,10 @@ func NewApp() *App {
 		title: putils.LettersFromStringWithStyle(
 			"-DOCTOR", pterm.FgLightMagenta.ToStyle(),
 		),
-		topLevelOptions: []string{HSMInfoCMD, SlotsCMD, TokensCMD, FindTokenCMD, GenerateKeysCMD, ImportKeysCMD, ExitCMD},
-		keyLengths: map[string][]string{
-			"RSA":  {"1024", "2048", "4096"},
-			"EC":   {"P224", "P256", "P384", "P521"},
-			"AES":  {"128", "192", "256"},
-			"3DES": {"128", "192"},
-			"DES":  {"64"},
-		},
-		algorithmsByObjectType: map[string][]string{
-			"SecretKey":  {"AES", "3DES", "DES"},
-			"PrivateKey": {"RSA", "EC"},
-			"PublicKey":  {"RSA", "EC"},
-		},
-		algorithms:    []string{"RSA", "EC", "AES", "3DES", "DES"},
-		keyOperations: []string{"Go Back", "Info", "Export", "Delete"},
-		objectTypes:   []string{"Certificate", "PublicKey", "PrivateKey", "SecretKey"},
+		topLevelOptions:     []string{HSMInfoCMD, SlotsCMD, TokensCMD, FindTokenCMD, GenerateKeysCMD, ImportKeysCMD, ExitCMD},
+		capabilities:        make(map[uint]slotCapabilities),
+		secretKeyAlgorithms: []string{"AES", "3DES", "DES"},
+		keyOperations:       []string{"Go Back", "Info", "Export", "Delete"},
 	}
 	app.interactiveText = pterm.DefaultInteractiveTextInput.WithOnInterruptFunc(app.close)
 	app.interactiveConfirm = pterm.DefaultInteractiveConfirm.WithOnInterruptFunc(app.close)
@@ -128,6 +114,9 @@ func (a *App) run() error {
 			a.log.Error("Failed to stop output printer", a.log.Args("error", serr))
 		}
 		return fmt.Errorf("load module: %w", err)
+	}
+	if err := a.loadCapabilities(); err != nil {
+		a.log.Warn("Some capabilities could not be loaded", a.log.Args("error", err))
 	}
 
 	interrupt := make(chan os.Signal, 1)
