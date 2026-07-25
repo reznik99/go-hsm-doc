@@ -13,7 +13,7 @@
     A simple CLI tool to view, inspect and debug PKCS#11-compliant HSMs and PIV smartcards.
   </p>
 
-  ![CLI Screenshot][cli]  
+  ![HSM-Doctor demo](res/tui.gif)  
 
 </div>
 
@@ -62,36 +62,6 @@ interactive menu. Common module paths:
 For PIV specifics (slot ↔ `CKA_ID` mapping, management-key auth), the tool has a built-in
 slot picker; PIV keys are non-extractable, so only public keys and certificates can be exported.
 
-## Examples
-
-1. Print HSM and Token information
-
-   ![CLI Screenshot][hsm_info]
-
-2. List Slots inside HSM
-
-   ![CLI Screenshot][slot_list]
-
-3. List Tokens inside HSM
-
-   ![CLI Screenshot][token_list]
-
-4. Find Tokens/Keys
-
-   ![CLI Screenshot][find_token]
-
-5. Delete Tokens/Keys
-
-   ![CLI Screenshot][delete_token]
-
-6. Export Tokens/Keys
-
-   ![CLI Screenshot][export_token]
-
-7. Generate Tokens/Keys
-
-   ![CLI Screenshot][generate_keys]
-
 ## Development
 
 Install the dev tools (pinned to the versions CI and the Makefile use):
@@ -127,14 +97,3 @@ Francesco Gorini - goras.francesco@gmail.com - https://francescogorini.com
 Project Link: [https://github.com/reznik99/go-hsm-doc](https://github.com/reznik99/go-hsm-doc)  
 
 <p align="right">(<a href="#top">back to top</a>)</p>  
-
-
-<!-- LINKS -->
-[cli]: res/cli.png
-[hsm_info]: res/hsm-info.png
-[slot_list]: res/list-slots.png
-[token_list]: res/list-tokens.png
-[find_token]: res/find-token.png
-[delete_token]: res/delete-token.png
-[export_token]: res/export-token.png
-[generate_keys]: res/generate-keys.png
