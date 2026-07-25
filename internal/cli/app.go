@@ -35,6 +35,7 @@ type App struct {
 	capabilities        map[uint]slotCapabilities
 	secretKeyAlgorithms []string
 	keyOperations       []string
+	tokenIsYubiKey      bool // heuristic (ykcs11) — only used to pick the default CKA_ID scheme
 }
 
 func New(version string) *App {
@@ -45,7 +46,7 @@ func New(version string) *App {
 			Writer:    os.Stdout,
 			Level:     pterm.LogLevelTrace,
 			KeyStyles: map[string]pterm.Style{},
-			MaxWidth:  100,
+			MaxWidth:  200,
 		},
 		titlePrefix: putils.LettersFromStringWithStyle(
 			"HSM", pterm.FgCyan.ToStyle(),
@@ -127,6 +128,7 @@ func (a *App) run() error {
 	if err := a.loadCapabilities(); err != nil {
 		a.log.Warn("Some capabilities could not be loaded", a.log.Args("error", err))
 	}
+	a.detectToken()
 
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)

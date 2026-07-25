@@ -204,14 +204,17 @@ func (a *App) generateKey() error {
 	}
 	length, _ := strconv.Atoi(lengthOrCurve)
 
-	// Select Key Label for key
-	keyLabel, err := a.interactiveText.Show("Key Label")
+	objectID, isPIV, err := a.promptObjectID()
 	if err != nil {
 		return err
 	}
-	objectID, err := a.promptObjectID()
-	if err != nil {
-		return err
+	// PIV derives the label from the slot and ignores CKA_LABEL, so only ask when it matters.
+	keyLabel := ""
+	if !isPIV {
+		keyLabel, err = a.interactiveText.Show("Key Label")
+		if err != nil {
+			return err
+		}
 	}
 
 	extractable, err := a.interactiveConfirm.Show("Extractable")
@@ -272,13 +275,17 @@ func (a *App) importKey() error {
 		return err
 	}
 
-	keyLabel, err := a.interactiveText.Show("Key Label")
+	objectID, isPIV, err := a.promptObjectID()
 	if err != nil {
 		return err
 	}
-	objectID, err := a.promptObjectID()
-	if err != nil {
-		return err
+	// PIV derives the label from the slot and ignores CKA_LABEL, so only ask when it matters.
+	keyLabel := ""
+	if !isPIV {
+		keyLabel, err = a.interactiveText.Show("Key Label")
+		if err != nil {
+			return err
+		}
 	}
 	extractable := false
 	if objectType == "PrivateKey" || objectType == "SecretKey" {
@@ -425,24 +432,6 @@ func (a *App) promptSlotSelection() (uint, error) {
 	}
 
 	return 0, errors.New("slot not selected")
-}
-
-func (a *App) promptObjectID() ([]byte, error) {
-	raw, err := a.interactiveText.Show("Object ID (HEX, blank for automatic)")
-	if err != nil {
-		return nil, err
-	}
-
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return nil, nil
-	}
-
-	objectID, err := hex.DecodeString(raw)
-	if err != nil {
-		return nil, fmt.Errorf("object ID must be hexadecimal: %w", err)
-	}
-	return objectID, nil
 }
 
 func (a *App) printObjectID(sh pkcs11.SessionHandle, objectHandle pkcs11.ObjectHandle) error {
