@@ -1,7 +1,7 @@
 # HSM-Doctor
 
 [![CI](https://github.com/reznik99/go-hsm-doc/actions/workflows/ci.yml/badge.svg)](https://github.com/reznik99/go-hsm-doc/actions/workflows/ci.yml)
-![Coverage](https://img.shields.io/badge/coverage-16.6%25-red)
+![Coverage](https://img.shields.io/badge/coverage-18.5%25-orange)
 ![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![PKCS#11](https://img.shields.io/badge/PKCS%2311-HSM%20%C2%B7%20PIV%20smartcard-2E7D32)
@@ -35,8 +35,8 @@
 ### Build & run
 
 ```sh
-make build      # produces ./build/main
-./build/main
+make build      # produces ./build/hsm-doctor
+./build/hsm-doctor
 ```
 
 On start the tool asks for the path to your Cryptoki library, then drops you into an
@@ -105,7 +105,7 @@ go install github.com/vektra/mockery/v2@v2.53.6
 make mocks   # regenerate mocks into internal/hsm/mocks
 make test    # unit tests (race) + coverage report at build/coverage.html
 make lint    # golangci-lint
-make build   # build ./build/main
+make build   # build ./build/hsm-doctor
 ```
 
 Package layout:

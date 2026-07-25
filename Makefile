@@ -20,7 +20,7 @@ test:
 # --- Build ---
 build:
 	@mkdir -p build
-	go build -v -ldflags="-X 'main.Version=$(VERSION)'" -o build/main .
+	go build -v -ldflags="-X 'main.Version=$(VERSION)'" -o build/hsm-doctor .
 
 # --- Lint ---
 lint:

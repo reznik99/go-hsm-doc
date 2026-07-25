@@ -27,12 +27,15 @@ on a YubiKey 5. Delete this file once the items below are done.
 
 ## 6. Mock-based tests
 
-Everything left untested calls the token, so it needs a seam.
+Done for the `internal/hsm` side: `Cryptoki` interface (`P11.Ctx` depends on it, `*pkcs11.Ctx`
+satisfies it), `.mockery.yaml` generating `internal/hsm/mocks`, and mock-injected unit tests for
+session/find/login/slots/mechanisms, export encoding, import + keygen templates, and the signer.
+(The earlier "unexport Ctx + wrappers" idea is dropped — depending on the interface gives
+mockability without forwarder methods, and `Ctx` stays exported.)
 
-- Add a `Cryptoki` interface in `internal/hsm` over the `*pkcs11.Ctx` methods used; `*pkcs11.Ctx`
-  satisfies it, so `NewP11` is unchanged. Add `.mockery.yaml`, generate `MockCryptoki`.
-- Fold in the deferred `Ctx` tidy: add `P11` wrappers (`GetInfo`/`GetSlotInfo`/`GetAttributes`/
-  `DestroyObject`), replace the `a.mod.Ctx.*` reach-ins in `internal/cli/`, unexport `Ctx`.
-- Then test without hardware: `FindObjects` pagination, `OpenSession` cache, `Login` user-type
-  switching, generate/import templates, `withElevatedAuth` retry, `resolveImportObjectID`,
-  `loadCapabilities`, `detectToken`.
+Remaining:
+- **CLI side** (inject the mock into `App`): `withElevatedAuth` retry-on-auth-error,
+  `resolveImportObjectID`, `loadCapabilities`, `detectToken`.
+- **Wrapping flows** (`ImportSecretKey`/`ImportPrivateKey`/`ExportSecretKey`/`ExportPrivateKey`)
+  are better as SoftHSM integration tests — a mock can't produce real wrapped ciphertext, so a
+  unit test would just exercise stdlib/tink, not our logic.

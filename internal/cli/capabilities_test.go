@@ -8,60 +8,56 @@ import (
 	"github.com/miekg/pkcs11"
 )
 
-func TestEligibleKeyGenerationOptions(t *testing.T) {
-	capabilities := slotCapabilities{mechanisms: map[uint]pkcs11.MechanismInfo{
-		pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN: {
-			MinKeySize: 2048,
-			MaxKeySize: 4096,
-			Flags:      pkcs11.CKF_GENERATE_KEY_PAIR,
-		},
-		pkcs11.CKM_EC_KEY_PAIR_GEN: {
-			MinKeySize: 256,
-			MaxKeySize: 384,
-			Flags:      pkcs11.CKF_GENERATE_KEY_PAIR | pkcs11.CKF_EC_NAMEDCURVE,
-		},
-		pkcs11.CKM_AES_KEY_GEN: {
-			MinKeySize: 24,
-			MaxKeySize: 32,
-			Flags:      pkcs11.CKF_GENERATE,
-		},
-		pkcs11.CKM_DES2_KEY_GEN: {Flags: pkcs11.CKF_GENERATE},
-		pkcs11.CKM_DES3_KEY_GEN: {Flags: pkcs11.CKF_GENERATE},
-	}}
-
-	options := eligibleKeyGenerationOptions(capabilities)
-	want := []keyGenerationOption{
-		{algorithm: "RSA", parameters: []string{"2048", "4096"}},
-		{algorithm: "EC", parameters: []string{"P256", "P384"}},
-		{algorithm: "AES", parameters: []string{"192", "256"}},
-		{algorithm: "3DES", parameters: []string{"128", "192"}},
-	}
-
-	if !slices.EqualFunc(options, want, func(a, b keyGenerationOption) bool {
-		return a.algorithm == b.algorithm && slices.Equal(a.parameters, b.parameters)
-	}) {
-		t.Fatalf("options = %#v, want %#v", options, want)
-	}
+func equalGenerationOptions(a, b []keyGenerationOption) bool {
+	return slices.EqualFunc(a, b, func(x, y keyGenerationOption) bool {
+		return x.algorithm == y.algorithm && slices.Equal(x.parameters, y.parameters)
+	})
 }
 
-func TestEligibleKeyGenerationOptionsRequireGenerationFlags(t *testing.T) {
-	capabilities := slotCapabilities{mechanisms: map[uint]pkcs11.MechanismInfo{
-		pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN: {Flags: pkcs11.CKF_SIGN},
-		pkcs11.CKM_EC_KEY_PAIR_GEN:       {Flags: pkcs11.CKF_GENERATE_KEY_PAIR},
-		pkcs11.CKM_AES_KEY_GEN:           {Flags: pkcs11.CKF_GENERATE},
-		pkcs11.CKM_DES_KEY_GEN:           {Flags: pkcs11.CKF_GENERATE},
-	}}
-
-	options := eligibleKeyGenerationOptions(capabilities)
-	want := []keyGenerationOption{
-		{algorithm: "AES", parameters: []string{"128", "192", "256"}},
-		{algorithm: "DES", parameters: []string{"64"}},
+func TestEligibleKeyGenerationOptions(t *testing.T) {
+	tests := []struct {
+		name       string
+		mechanisms map[uint]pkcs11.MechanismInfo
+		want       []keyGenerationOption
+	}{
+		{
+			name: "filters sizes and curves to the supported range",
+			mechanisms: map[uint]pkcs11.MechanismInfo{
+				pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN: {MinKeySize: 2048, MaxKeySize: 4096, Flags: pkcs11.CKF_GENERATE_KEY_PAIR},
+				pkcs11.CKM_EC_KEY_PAIR_GEN:       {MinKeySize: 256, MaxKeySize: 384, Flags: pkcs11.CKF_GENERATE_KEY_PAIR | pkcs11.CKF_EC_NAMEDCURVE},
+				pkcs11.CKM_AES_KEY_GEN:           {MinKeySize: 24, MaxKeySize: 32, Flags: pkcs11.CKF_GENERATE},
+				pkcs11.CKM_DES2_KEY_GEN:          {Flags: pkcs11.CKF_GENERATE},
+				pkcs11.CKM_DES3_KEY_GEN:          {Flags: pkcs11.CKF_GENERATE},
+			},
+			want: []keyGenerationOption{
+				{algorithm: "RSA", parameters: []string{"2048", "4096"}},
+				{algorithm: "EC", parameters: []string{"P256", "P384"}},
+				{algorithm: "AES", parameters: []string{"192", "256"}},
+				{algorithm: "3DES", parameters: []string{"128", "192"}},
+			},
+		},
+		{
+			name: "omits mechanisms without a generate flag",
+			mechanisms: map[uint]pkcs11.MechanismInfo{
+				pkcs11.CKM_RSA_PKCS_KEY_PAIR_GEN: {Flags: pkcs11.CKF_SIGN},              // not a generate flag -> dropped
+				pkcs11.CKM_EC_KEY_PAIR_GEN:       {Flags: pkcs11.CKF_GENERATE_KEY_PAIR}, // missing CKF_EC_NAMEDCURVE -> dropped
+				pkcs11.CKM_AES_KEY_GEN:           {Flags: pkcs11.CKF_GENERATE},
+				pkcs11.CKM_DES_KEY_GEN:           {Flags: pkcs11.CKF_GENERATE},
+			},
+			want: []keyGenerationOption{
+				{algorithm: "AES", parameters: []string{"128", "192", "256"}},
+				{algorithm: "DES", parameters: []string{"64"}},
+			},
+		},
 	}
 
-	if !slices.EqualFunc(options, want, func(a, b keyGenerationOption) bool {
-		return a.algorithm == b.algorithm && slices.Equal(a.parameters, b.parameters)
-	}) {
-		t.Fatalf("options = %#v, want %#v", options, want)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := eligibleKeyGenerationOptions(slotCapabilities{mechanisms: test.mechanisms})
+			if !equalGenerationOptions(got, test.want) {
+				t.Fatalf("options = %#v, want %#v", got, test.want)
+			}
+		})
 	}
 }
 
