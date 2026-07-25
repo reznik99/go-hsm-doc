@@ -1,8 +1,13 @@
 VERSION := $(shell git describe --tags)
 
-.PHONY: all test build lint
+.PHONY: all mocks test build lint
 
-all: lint test build
+all: mocks lint test build
+
+# --- Mocks ---
+# Pinned via `go run` so no separate install is needed and the version is reproducible.
+mocks:
+	go run github.com/vektra/mockery/v2@v2.53.6
 
 # --- Test ---
 test:

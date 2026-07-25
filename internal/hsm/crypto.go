@@ -8,26 +8,26 @@ import (
 )
 
 type P11 struct {
-	Ctx      *pkcs11.Ctx
+	Ctx      Cryptoki
 	Sessions map[uint]pkcs11.SessionHandle
 }
 
 func NewP11(modulePath string) (*P11, error) {
-	module := &P11{
-		Sessions: map[uint]pkcs11.SessionHandle{},
-	}
-
-	module.Ctx = pkcs11.New(modulePath)
-	if module.Ctx == nil {
+	// Check the concrete return before storing it in the interface field: a nil
+	// *pkcs11.Ctx placed in a Cryptoki would be a non-nil interface (typed nil).
+	ctx := pkcs11.New(modulePath)
+	if ctx == nil {
 		return nil, errors.New("error loading module")
 	}
-	err := module.Ctx.Initialize()
-	if err != nil {
-		module.Ctx.Destroy()
+	if err := ctx.Initialize(); err != nil {
+		ctx.Destroy()
 		return nil, fmt.Errorf("error initializing module: %w", err)
 	}
 
-	return module, nil
+	return &P11{
+		Ctx:      ctx,
+		Sessions: map[uint]pkcs11.SessionHandle{},
+	}, nil
 }
 
 func (p *P11) GetSlots() (map[uint]pkcs11.TokenInfo, error) {

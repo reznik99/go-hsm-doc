@@ -94,7 +94,15 @@ slot picker; PIV keys are non-extractable, so only public keys and certificates 
 
 ## Development
 
+Install the dev tools (pinned to the versions CI and the Makefile use):
+
 ```sh
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+go install github.com/vektra/mockery/v2@v2.53.6
+```
+
+```sh
+make mocks   # regenerate mocks into internal/hsm/mocks
 make test    # unit tests (race) + coverage report at build/coverage.html
 make lint    # golangci-lint
 make build   # build ./build/main

@@ -16,7 +16,7 @@ import (
 // Signer implements crypto.Signer for a private key that never leaves the token —
 // the signature is produced by C_Sign. The session must be logged in for the key.
 type Signer struct {
-	ctx        *pkcs11.Ctx
+	ctx        Cryptoki
 	session    pkcs11.SessionHandle
 	privateKey pkcs11.ObjectHandle
 	public     crypto.PublicKey
