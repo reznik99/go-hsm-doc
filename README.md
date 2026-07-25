@@ -1,7 +1,7 @@
 # HSM-Doctor
 
 [![CI](https://github.com/reznik99/go-hsm-doc/actions/workflows/ci.yml/badge.svg)](https://github.com/reznik99/go-hsm-doc/actions/workflows/ci.yml)
-![Coverage](https://img.shields.io/badge/coverage-18.5%25-orange)
+![Coverage](https://img.shields.io/badge/coverage-27.3%25-orange)
 ![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![PKCS#11](https://img.shields.io/badge/PKCS%2311-HSM%20%C2%B7%20PIV%20smartcard-2E7D32)

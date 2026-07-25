@@ -517,6 +517,21 @@ func (a *App) printObjectInfo(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) er
 }
 
 // objectClass returns the CKA_CLASS of an object (CKO_PRIVATE_KEY, CKO_CERTIFICATE, ...).
+// Checking up front gives a clear reason instead of the opaque failure the token returns
+// mid-export. PIV keys are never extractable.
+func (a *App) requireExtractable(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
+	attrs, err := a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_EXTRACTABLE, nil),
+	})
+	if err != nil {
+		return err
+	}
+	if len(attrs[0].Value) == 0 || attrs[0].Value[0] == 0 {
+		return errors.New("key is not extractable and cannot be exported")
+	}
+	return nil
+}
+
 func (a *App) objectClass(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) (uint, error) {
 	attrs, err := a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
@@ -554,9 +569,15 @@ func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byt
 		token, err = a.mod.ExportPublicKey(sh, o)
 		defaultName = "public-key.pem"
 	case pkcs11.CKO_PRIVATE_KEY:
+		if err = a.requireExtractable(sh, o); err != nil {
+			return nil, err
+		}
 		token, err = a.mod.ExportPrivateKey(sh, o)
 		defaultName = "private-key.pem"
 	case pkcs11.CKO_SECRET_KEY:
+		if err = a.requireExtractable(sh, o); err != nil {
+			return nil, err
+		}
 		token, err = a.mod.ExportSecretKey(sh, o)
 		defaultName = "secret-key.hex"
 	default:

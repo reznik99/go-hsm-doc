@@ -1,4 +1,6 @@
 VERSION := $(shell git describe --tags)
+# Packages under test, minus generated mocks (they'd dilute coverage).
+COVER_PKGS := $(shell go list ./... | grep -v /mocks)
 
 .PHONY: all mocks test build lint
 
@@ -12,7 +14,7 @@ mocks:
 # --- Test ---
 test:
 	@mkdir -p build
-	go test -race -coverprofile=build/coverage.out ./...
+	go test -race -coverprofile=build/coverage.out $(COVER_PKGS)
 	@go tool cover -func=build/coverage.out | tail -n 1
 	@go tool cover -html=build/coverage.out -o build/coverage.html
 	@echo "coverage report: build/coverage.html"
