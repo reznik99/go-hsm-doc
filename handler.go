@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -129,8 +128,8 @@ func (a *App) findToken() error {
 			continue
 		}
 		option := fmt.Sprintf("[%02d] %s %s %s ID:%s", o,
-			padString(internal.AttributeToString(attribs[1]), 4),
-			padString(internal.AttributeToString(attribs[2]), 11),
+			internal.PadString(internal.AttributeToString(attribs[1]), 4),
+			internal.PadString(internal.AttributeToString(attribs[2]), 11),
 			internal.AttributeToString(attribs[0]),
 			internal.AttributeToString(attribs[3]),
 		)
@@ -162,7 +161,7 @@ func (a *App) findToken() error {
 		case "Export":
 			_, err = a.exportToken(sh, oh)
 		case "Delete":
-			return a.deleteToken(sh, oh)
+			return a.deleteToken(selectedSlot, sh, oh)
 		}
 		if err != nil {
 			return err
@@ -231,19 +230,21 @@ func (a *App) generateKey() error {
 
 	start := time.Now()
 
-	var objectHandle pkcs11.ObjectHandle
-	switch algorithm {
-	case "RSA":
-		objectHandle, _, err = a.mod.GenerateRSAKeypair(sh, keyLabel, objectID, length, extractable, false)
-	case "EC":
-		objectHandle, err = a.mod.GenerateECKeypair(sh, keyLabel, objectID, lengthOrCurve, extractable, false)
-	case "AES":
-		objectHandle, err = a.mod.GenerateAESKey(sh, keyLabel, objectID, length, extractable, false)
-	case "DES", "2DES", "3DES":
-		objectHandle, err = a.mod.GenerateDESKey(sh, keyLabel, objectID, length, extractable, false)
-	default:
-		err = fmt.Errorf("unrecognized algorithm %s", algorithm)
-	}
+	objectHandle, err := a.withElevatedAuth(selectedSlot, func() (pkcs11.ObjectHandle, error) {
+		switch algorithm {
+		case "RSA":
+			handle, _, genErr := a.mod.GenerateRSAKeypair(sh, keyLabel, objectID, length, extractable, false)
+			return handle, genErr
+		case "EC":
+			return a.mod.GenerateECKeypair(sh, keyLabel, objectID, lengthOrCurve, extractable, false)
+		case "AES":
+			return a.mod.GenerateAESKey(sh, keyLabel, objectID, length, extractable, false)
+		case "DES", "2DES", "3DES":
+			return a.mod.GenerateDESKey(sh, keyLabel, objectID, length, extractable, false)
+		default:
+			return 0, fmt.Errorf("unrecognized algorithm %s", algorithm)
+		}
+	})
 	if err != nil {
 		return fmt.Errorf("generate %s key with parameter %s: %w", algorithm, lengthOrCurve, err)
 	}
@@ -318,7 +319,9 @@ func (a *App) importKey() error {
 			return parseErr
 		}
 		objectID = a.resolveImportObjectID(selectedSlot, sh, certificate.PublicKey, defaultID, objectID)
-		objectHandle, err = a.mod.ImportCertificate(sh, certificate, keyLabel, objectID, false)
+		objectHandle, err = a.withElevatedAuth(selectedSlot, func() (pkcs11.ObjectHandle, error) {
+			return a.mod.ImportCertificate(sh, certificate, keyLabel, objectID, false)
+		})
 	case "PublicKey":
 		block, parseErr := parsePEMBlock(rawToken, objectType)
 		if parseErr != nil {
@@ -338,7 +341,9 @@ func (a *App) importKey() error {
 			return detectionErr
 		}
 		objectID = a.resolveImportObjectID(selectedSlot, sh, publicKey, defaultID, objectID)
-		objectHandle, err = a.mod.ImportPublicKey(sh, publicKey, keyLabel, objectID, false)
+		objectHandle, err = a.withElevatedAuth(selectedSlot, func() (pkcs11.ObjectHandle, error) {
+			return a.mod.ImportPublicKey(sh, publicKey, keyLabel, objectID, false)
+		})
 	case "PrivateKey":
 		block, parseErr := parsePEMBlock(rawToken, objectType)
 		if parseErr != nil {
@@ -362,7 +367,9 @@ func (a *App) importKey() error {
 			return detectionErr
 		}
 		objectID = a.resolveImportObjectID(selectedSlot, sh, publicKey, defaultID, objectID)
-		objectHandle, err = a.mod.ImportPrivateKey(sh, block.Bytes, keyLabel, objectID, algorithm, extractable, false)
+		objectHandle, err = a.withElevatedAuth(selectedSlot, func() (pkcs11.ObjectHandle, error) {
+			return a.mod.ImportPrivateKey(sh, block.Bytes, keyLabel, objectID, algorithm, extractable, false)
+		})
 	case "SecretKey":
 		algorithm, promptErr := a.interactiveSelect.WithOptions(a.secretKeyAlgorithms).Show("Select Algorithm")
 		if promptErr != nil {
@@ -372,7 +379,9 @@ func (a *App) importKey() error {
 		if decodeErr != nil {
 			return fmt.Errorf("secret key not in HEX string format: %w", decodeErr)
 		}
-		objectHandle, err = a.mod.ImportSecretKey(sh, secretKey, keyLabel, objectID, algorithm, extractable, false)
+		objectHandle, err = a.withElevatedAuth(selectedSlot, func() (pkcs11.ObjectHandle, error) {
+			return a.mod.ImportSecretKey(sh, secretKey, keyLabel, objectID, algorithm, extractable, false)
+		})
 	default:
 		return fmt.Errorf("unrecognized object type %s", objectType)
 	}
@@ -494,20 +503,23 @@ func (a *App) printObjectInfo(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) er
 		return err
 	}
 	a.log.Info(fmt.Sprintf("[%02d]", o),
-		a.log.Args("Algorithm", padString(internal.AttributeToString(attribs[1]), 4)),
-		a.log.Args("Type", padString(internal.AttributeToString(attribs[2]), 11)),
+		a.log.Args("Algorithm", internal.PadString(internal.AttributeToString(attribs[1]), 4)),
+		a.log.Args("Type", internal.PadString(internal.AttributeToString(attribs[2]), 11)),
 		a.log.Args("Label", internal.AttributeToString(attribs[0])),
 		a.log.Args("ID", internal.AttributeToString(attribs[3])),
 	)
 	return nil
 }
 
-func (a *App) deleteToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
+func (a *App) deleteToken(slotID uint, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
 	confirmed, err := a.interactiveConfirm.Show("Delete selected object?")
 	if err != nil || !confirmed {
 		return err
 	}
-	return a.mod.Ctx.DestroyObject(sh, o)
+	_, err = a.withElevatedAuth(slotID, func() (pkcs11.ObjectHandle, error) {
+		return o, a.mod.Ctx.DestroyObject(sh, o)
+	})
+	return err
 }
 
 func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byte, error) {
@@ -549,22 +561,49 @@ func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byt
 }
 
 func (a *App) login(slotID uint) error {
-	pin, err := a.interactiveText.WithMask("*").Show("Slot/Partition PIN (optional)")
+	pin, err := a.interactiveText.WithMask("*").Show("User PIN (optional)")
 	if err != nil {
-		return fmt.Errorf("error reading Slot/Partition PIN: %w", err)
+		return fmt.Errorf("error reading User PIN: %w", err)
 	}
-	if pin != "" {
-		err = a.mod.Login(slotID, pin)
-		if err != nil && !errors.Is(err, pkcs11.Error(pkcs11.CKR_USER_ALREADY_LOGGED_IN)) {
-			return err
-		}
+	if pin == "" {
+		return nil
 	}
-	return nil
+	return a.mod.Login(slotID, pkcs11.CKU_USER, pin)
 }
 
-// padString returns the string right-padded with specified number of spaces
-func padString(value string, number int) string {
-	number = int(math.Abs(float64(number - len(value))))
-	padding := strings.Repeat(" ", number)
-	return fmt.Sprintf("%s%s", value, padding)
+// isElevatedAuthError reports whether a write was refused for lack of privilege,
+// i.e. the token wants an SO / management-key login rather than the user PIN.
+func isElevatedAuthError(err error) bool {
+	var pe pkcs11.Error
+	if !errors.As(err, &pe) {
+		return false
+	}
+	switch uint(pe) {
+	case pkcs11.CKR_USER_NOT_LOGGED_IN, pkcs11.CKR_USER_TYPE_INVALID,
+		pkcs11.CKR_ACTION_PROHIBITED, pkcs11.CKR_SESSION_READ_ONLY:
+		return true
+	default:
+		return false
+	}
+}
+
+// withElevatedAuth runs an object write; if the token refuses it for lack of
+// privilege, it prompts for the SO / management key and retries once as CKU_SO.
+func (a *App) withElevatedAuth(slotID uint, op func() (pkcs11.ObjectHandle, error)) (pkcs11.ObjectHandle, error) {
+	handle, err := op()
+	if err == nil || !isElevatedAuthError(err) {
+		return handle, err
+	}
+	a.log.Warn("Operation needs elevated auth (SO / management key)", a.log.Args("error", err))
+	secret, perr := a.interactiveText.WithMask("*").Show("SO PIN / Management key")
+	if perr != nil {
+		return 0, fmt.Errorf("read SO credential: %w", perr)
+	}
+	if secret == "" {
+		return handle, err // user declined; surface the original refusal
+	}
+	if lerr := a.mod.Login(slotID, pkcs11.CKU_SO, secret); lerr != nil {
+		return 0, fmt.Errorf("SO login: %w", lerr)
+	}
+	return op()
 }

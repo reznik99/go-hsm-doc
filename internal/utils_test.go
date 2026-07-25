@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/binary"
 	"testing"
 
 	"github.com/miekg/pkcs11"
@@ -191,5 +192,37 @@ func TestParseECPointRawFallback(t *testing.T) {
 func TestParseECPointInvalid(t *testing.T) {
 	if _, _, err := ParseECPoint(elliptic.P256(), []byte{0x01, 0x02, 0x03}); err == nil {
 		t.Fatal("expected error for garbage EC point, got nil")
+	}
+}
+
+func TestAttributeToUint(t *testing.T) {
+	four := binary.NativeEndian.AppendUint32(nil, 0x01020304)
+	eight := binary.NativeEndian.AppendUint64(nil, 0x0102030405060708)
+
+	if v, err := AttributeToUint(&pkcs11.Attribute{Type: pkcs11.CKA_CLASS, Value: four}); err != nil || v != 0x01020304 {
+		t.Errorf("4-byte: got (%#x, %v), want (0x01020304, nil)", v, err)
+	}
+	if v, err := AttributeToUint(&pkcs11.Attribute{Type: pkcs11.CKA_CLASS, Value: eight}); err != nil || v != 0x0102030405060708 {
+		t.Errorf("8-byte: got (%#x, %v), want (0x0102030405060708, nil)", v, err)
+	}
+	if _, err := AttributeToUint(&pkcs11.Attribute{Type: pkcs11.CKA_CLASS, Value: []byte{1, 2, 3}}); err == nil {
+		t.Error("3-byte: expected error, got nil")
+	}
+}
+
+func TestPadString(t *testing.T) {
+	cases := []struct {
+		value  string
+		number int
+		want   string
+	}{
+		{"ab", 4, "ab  "},     // appends |4-2| = 2 spaces
+		{"abcd", 2, "abcd  "}, // appends |2-4| = 2 spaces
+		{"x", 1, "x"},         // |1-1| = 0
+	}
+	for _, c := range cases {
+		if got := PadString(c.value, c.number); got != c.want {
+			t.Errorf("PadString(%q, %d) = %q, want %q", c.value, c.number, got, c.want)
+		}
 	}
 }

@@ -119,12 +119,26 @@ func (p *P11) destroyObjects(sh pkcs11.SessionHandle, handles ...pkcs11.ObjectHa
 	return destroyErr
 }
 
-func (p *P11) Login(slotID uint, pin string) error {
+// Login authenticates the slot's session as the given user type: pkcs11.CKU_USER
+// with the PIN, or pkcs11.CKU_SO with the SO / management key. If a different user
+// type is already logged in, it logs out and retries (a session holds only one).
+func (p *P11) Login(slotID, userType uint, secret string) error {
 	sh, ok := p.Sessions[slotID]
 	if !ok {
 		return fmt.Errorf("session doesn't exist for slot: %d", slotID)
 	}
-	return p.Ctx.Login(sh, pkcs11.CKU_USER, pin)
+	err := p.Ctx.Login(sh, userType, secret)
+	switch {
+	case err == nil, errors.Is(err, pkcs11.Error(pkcs11.CKR_USER_ALREADY_LOGGED_IN)):
+		return nil
+	case errors.Is(err, pkcs11.Error(pkcs11.CKR_USER_ANOTHER_ALREADY_LOGGED_IN)):
+		if lerr := p.Ctx.Logout(sh); lerr != nil {
+			return fmt.Errorf("logout before re-login: %w", lerr)
+		}
+		return p.Ctx.Login(sh, userType, secret)
+	default:
+		return err
+	}
 }
 
 func (p *P11) Finalize() error {

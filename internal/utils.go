@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 
@@ -215,4 +216,11 @@ func ParseECPoint(curve elliptic.Curve, raw []byte) (*big.Int, *big.Int, error) 
 		return nil, nil, errors.New("failed to parse EC point")
 	}
 	return x, y, nil
+}
+
+// PadString returns the string right-padded with specified number of spaces
+func PadString(value string, number int) string {
+	number = int(math.Abs(float64(number - len(value))))
+	padding := strings.Repeat(" ", number)
+	return fmt.Sprintf("%s%s", value, padding)
 }
