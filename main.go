@@ -1,13 +1,15 @@
 package main
 
-import "os"
+import (
+	"os"
+
+	"github.com/reznik99/go-hsm-doc/internal/cli"
+)
 
 var Version = "Development"
 
 func main() {
-	app := NewApp()
-	if err := app.run(); err != nil {
-		app.log.Error("Application failed", app.log.Args("error", err))
+	if err := cli.New(Version).Run(); err != nil {
 		os.Exit(1)
 	}
 }

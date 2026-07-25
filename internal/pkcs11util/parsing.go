@@ -1,4 +1,4 @@
-package main
+package pkcs11util
 
 import (
 	"crypto/ecdsa"
@@ -9,7 +9,7 @@ import (
 	"fmt"
 )
 
-func parsePEMBlock(raw, objectType string) (*pem.Block, error) {
+func ParsePEMBlock(raw, objectType string) (*pem.Block, error) {
 	block, rest := pem.Decode([]byte(raw))
 	if block == nil || len(rest) != 0 {
 		return nil, fmt.Errorf("failed to decode PEM %s", objectType)
@@ -17,7 +17,7 @@ func parsePEMBlock(raw, objectType string) (*pem.Block, error) {
 	return block, nil
 }
 
-func parsePrivateKey(der []byte) (any, error) {
+func ParsePrivateKey(der []byte) (any, error) {
 	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
 		return key, nil
 	}
@@ -30,7 +30,7 @@ func parsePrivateKey(der []byte) (any, error) {
 	return nil, errors.New("private key must use PKCS#8, PKCS#1 RSA, or SEC1 EC encoding")
 }
 
-func detectKeyAlgorithm(key any) (string, error) {
+func DetectKeyAlgorithm(key any) (string, error) {
 	switch key.(type) {
 	case *rsa.PublicKey, *rsa.PrivateKey:
 		return "RSA", nil

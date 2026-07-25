@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"crypto/x509"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/miekg/pkcs11"
 	"github.com/pterm/pterm"
-	"github.com/reznik99/go-hsm-doc/internal"
+	"github.com/reznik99/go-hsm-doc/internal/pkcs11util"
 )
 
 // Handlers for Commands
@@ -128,10 +128,10 @@ func (a *App) findToken() error {
 			continue
 		}
 		option := fmt.Sprintf("[%02d] %s %s %s ID:%s", o,
-			internal.PadString(internal.AttributeToString(attribs[1]), 4),
-			internal.PadString(internal.AttributeToString(attribs[2]), 11),
-			internal.AttributeToString(attribs[0]),
-			internal.AttributeToString(attribs[3]),
+			padString(pkcs11util.AttributeToString(attribs[1]), 4),
+			padString(pkcs11util.AttributeToString(attribs[2]), 11),
+			pkcs11util.AttributeToString(attribs[0]),
+			pkcs11util.AttributeToString(attribs[3]),
 		)
 		options = append(options, option)
 		handleMap[option] = o
@@ -306,7 +306,7 @@ func (a *App) importKey() error {
 	var objectHandle pkcs11.ObjectHandle
 	switch objectType {
 	case "Certificate":
-		block, parseErr := parsePEMBlock(rawToken, objectType)
+		block, parseErr := pkcs11util.ParsePEMBlock(rawToken, objectType)
 		if parseErr != nil {
 			return parseErr
 		}
@@ -323,7 +323,7 @@ func (a *App) importKey() error {
 			return a.mod.ImportCertificate(sh, certificate, keyLabel, objectID, false)
 		})
 	case "PublicKey":
-		block, parseErr := parsePEMBlock(rawToken, objectType)
+		block, parseErr := pkcs11util.ParsePEMBlock(rawToken, objectType)
 		if parseErr != nil {
 			return parseErr
 		}
@@ -331,7 +331,7 @@ func (a *App) importKey() error {
 		if parseErr != nil {
 			return parseErr
 		}
-		algorithm, detectionErr := detectKeyAlgorithm(publicKey)
+		algorithm, detectionErr := pkcs11util.DetectKeyAlgorithm(publicKey)
 		if detectionErr != nil {
 			return detectionErr
 		}
@@ -345,15 +345,15 @@ func (a *App) importKey() error {
 			return a.mod.ImportPublicKey(sh, publicKey, keyLabel, objectID, false)
 		})
 	case "PrivateKey":
-		block, parseErr := parsePEMBlock(rawToken, objectType)
+		block, parseErr := pkcs11util.ParsePEMBlock(rawToken, objectType)
 		if parseErr != nil {
 			return parseErr
 		}
-		privateKey, parseErr := parsePrivateKey(block.Bytes)
+		privateKey, parseErr := pkcs11util.ParsePrivateKey(block.Bytes)
 		if parseErr != nil {
 			return parseErr
 		}
-		algorithm, detectionErr := detectKeyAlgorithm(privateKey)
+		algorithm, detectionErr := pkcs11util.DetectKeyAlgorithm(privateKey)
 		if detectionErr != nil {
 			return detectionErr
 		}
@@ -452,7 +452,7 @@ func (a *App) printObjectID(sh pkcs11.SessionHandle, objectHandle pkcs11.ObjectH
 	if err != nil {
 		return err
 	}
-	pterm.Info.Printfln("Object ID: %s", internal.AttributeToString(attributes[0]))
+	pterm.Info.Printfln("Object ID: %s", pkcs11util.AttributeToString(attributes[0]))
 	return nil
 }
 
@@ -464,7 +464,7 @@ func (a *App) getAttributeValue(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) 
 	if err != nil {
 		return nil, err
 	}
-	class, err := internal.AttributeToUint(attribs[1])
+	class, err := pkcs11util.AttributeToUint(attribs[1])
 	if err != nil {
 		return nil, err
 	}
@@ -503,10 +503,10 @@ func (a *App) printObjectInfo(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) er
 		return err
 	}
 	a.log.Info(fmt.Sprintf("[%02d]", o),
-		a.log.Args("Algorithm", internal.PadString(internal.AttributeToString(attribs[1]), 4)),
-		a.log.Args("Type", internal.PadString(internal.AttributeToString(attribs[2]), 11)),
-		a.log.Args("Label", internal.AttributeToString(attribs[0])),
-		a.log.Args("ID", internal.AttributeToString(attribs[3])),
+		a.log.Args("Algorithm", padString(pkcs11util.AttributeToString(attribs[1]), 4)),
+		a.log.Args("Type", padString(pkcs11util.AttributeToString(attribs[2]), 11)),
+		a.log.Args("Label", pkcs11util.AttributeToString(attribs[0])),
+		a.log.Args("ID", pkcs11util.AttributeToString(attribs[3])),
 	)
 	return nil
 }
@@ -531,11 +531,11 @@ func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byt
 		return nil, err
 	}
 
-	algorithmType, err := internal.AttributeToUint(attribs[0])
+	algorithmType, err := pkcs11util.AttributeToUint(attribs[0])
 	if err != nil {
 		return nil, err
 	}
-	objectType, err := internal.AttributeToUint(attribs[1])
+	objectType, err := pkcs11util.AttributeToUint(attribs[1])
 	if err != nil {
 		return nil, err
 	}
@@ -558,6 +558,15 @@ func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byt
 		return nil, fmt.Errorf("unrecognized object type: %d", objectType)
 	}
 	return token, err
+}
+
+// padString right-pads value with spaces up to width, for column alignment.
+// If value is already at least width long, it is returned unchanged.
+func padString(value string, width int) string {
+	if pad := width - len(value); pad > 0 {
+		return value + strings.Repeat(" ", pad)
+	}
+	return value
 }
 
 func (a *App) login(slotID uint) error {

@@ -1,4 +1,4 @@
-package internal
+package hsm
 
 import (
 	"crypto/ecdsa"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/miekg/pkcs11"
+	"github.com/reznik99/go-hsm-doc/internal/pkcs11util"
 	"github.com/tink-crypto/tink-go/v2/kwp/subtle"
 )
 
@@ -48,11 +49,11 @@ func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string,
 		return p.Ctx.CreateObject(sh, template)
 	case *ecdsa.PublicKey:
 		// Parse curve into Params
-		params, err := CurveNameToECParams(publicKey.Params().Name)
+		params, err := pkcs11util.CurveNameToECParams(publicKey.Params().Name)
 		if err != nil {
 			return pkcs11.ObjectHandle(0), err
 		}
-		ecPoint, err := MarshalECPoint(publicKey)
+		ecPoint, err := pkcs11util.MarshalECPoint(publicKey)
 		if err != nil {
 			return pkcs11.ObjectHandle(0), err
 		}
@@ -107,7 +108,7 @@ func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keyLabel s
 	}
 
 	// Import/unwrap the wrapped symmetric key
-	algo, err := StringToAttribute(algorithm)
+	algo, err := pkcs11util.StringToAttribute(algorithm)
 	if err != nil {
 		return 0, err
 	}
@@ -159,7 +160,7 @@ func (p *P11) ImportPrivateKey(sh pkcs11.SessionHandle, rawKey []byte, keyLabel 
 	}()
 
 	// Import/unwrap user key
-	algo, err := StringToAttribute(algorithm)
+	algo, err := pkcs11util.StringToAttribute(algorithm)
 	if err != nil {
 		return 0, err
 	}

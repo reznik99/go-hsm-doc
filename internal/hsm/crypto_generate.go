@@ -1,10 +1,11 @@
-package internal
+package hsm
 
 import (
 	"crypto/rand"
 	"fmt"
 
 	"github.com/miekg/pkcs11"
+	"github.com/reznik99/go-hsm-doc/internal/pkcs11util"
 )
 
 // GenerateAESKey generates an AES key in the HSM.
@@ -120,7 +121,7 @@ func (p *P11) GenerateECKeypair(sh pkcs11.SessionHandle, label string, objectID 
 
 	mech := []*pkcs11.Mechanism{pkcs11.NewMechanism(pkcs11.CKM_EC_KEY_PAIR_GEN, nil)}
 
-	ecParams, err := CurveNameToECParams(curve)
+	ecParams, err := pkcs11util.CurveNameToECParams(curve)
 	if err != nil {
 		return pkcs11.ObjectHandle(0), err
 	}

@@ -1,4 +1,4 @@
-package main
+package pkcs11util
 
 import (
 	"crypto/ecdsa"
@@ -13,13 +13,13 @@ import (
 func TestParsePEMBlock(t *testing.T) {
 	valid := string(pem.EncodeToMemory(&pem.Block{Type: "TEST", Bytes: []byte{1, 2, 3}}))
 
-	if _, err := parsePEMBlock(valid, "test"); err != nil {
+	if _, err := ParsePEMBlock(valid, "test"); err != nil {
 		t.Errorf("valid PEM: unexpected error %v", err)
 	}
-	if _, err := parsePEMBlock("not a pem block", "test"); err == nil {
+	if _, err := ParsePEMBlock("not a pem block", "test"); err == nil {
 		t.Error("garbage: expected error, got nil")
 	}
-	if _, err := parsePEMBlock(valid+"trailing bytes", "test"); err == nil {
+	if _, err := ParsePEMBlock(valid+"trailing bytes", "test"); err == nil {
 		t.Error("trailing bytes: expected error, got nil")
 	}
 }
@@ -53,12 +53,12 @@ func TestParsePrivateKey(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if _, err := parsePrivateKey(c.der); err != nil {
+			if _, err := ParsePrivateKey(c.der); err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
 		})
 	}
-	if _, err := parsePrivateKey([]byte{1, 2, 3}); err == nil {
+	if _, err := ParsePrivateKey([]byte{1, 2, 3}); err == nil {
 		t.Error("garbage: expected error, got nil")
 	}
 }
@@ -87,7 +87,7 @@ func TestDetectKeyAlgorithm(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := detectKeyAlgorithm(c.key)
+			got, err := DetectKeyAlgorithm(c.key)
 			if c.wantErr {
 				if err == nil {
 					t.Fatal("expected error, got nil")

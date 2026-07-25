@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"errors"
@@ -27,5 +27,22 @@ func TestIsElevatedAuthError(t *testing.T) {
 				t.Errorf("isElevatedAuthError(%v) = %v, want %v", c.err, got, c.want)
 			}
 		})
+	}
+}
+
+func TestPadString(t *testing.T) {
+	cases := []struct {
+		value string
+		width int
+		want  string
+	}{
+		{"ab", 4, "ab  "},   // pads to width 4
+		{"abcd", 2, "abcd"}, // already wider than 2 -> unchanged
+		{"x", 1, "x"},       // exactly width -> unchanged
+	}
+	for _, c := range cases {
+		if got := padString(c.value, c.width); got != c.want {
+			t.Errorf("padString(%q, %d) = %q, want %q", c.value, c.width, got, c.want)
+		}
 	}
 }

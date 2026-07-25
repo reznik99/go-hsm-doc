@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/pterm/pterm/putils"
-	"github.com/reznik99/go-hsm-doc/internal"
+	"github.com/reznik99/go-hsm-doc/internal/hsm"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 type App struct {
 	version             string
 	log                 pterm.Logger
-	mod                 *internal.P11
+	mod                 *hsm.P11
 	interactiveText     *pterm.InteractiveTextInputPrinter
 	interactiveConfirm  *pterm.InteractiveConfirmPrinter
 	interactiveSelect   *pterm.InteractiveSelectPrinter
@@ -37,9 +37,9 @@ type App struct {
 	keyOperations       []string
 }
 
-func NewApp() *App {
+func New(version string) *App {
 	app := &App{
-		version: Version,
+		version: version,
 		log: pterm.Logger{
 			Formatter: pterm.LogFormatterColorful,
 			Writer:    os.Stdout,
@@ -90,6 +90,15 @@ func (a *App) pressEnterToContinue() {
 	}
 }
 
+// Run starts the interactive session, logging a fatal error if it fails.
+func (a *App) Run() error {
+	if err := a.run(); err != nil {
+		a.log.Error("Application failed", a.log.Args("error", err))
+		return err
+	}
+	return nil
+}
+
 func (a *App) run() error {
 	a.printTitle()
 
@@ -108,7 +117,7 @@ func (a *App) run() error {
 	}
 
 	time.Sleep(time.Second / 2)
-	a.mod, err = internal.NewP11(modulePath)
+	a.mod, err = hsm.NewP11(modulePath)
 	if err != nil {
 		if _, serr := multi.Stop(); serr != nil {
 			a.log.Error("Failed to stop output printer", a.log.Args("error", serr))

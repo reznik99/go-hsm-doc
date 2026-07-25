@@ -1,4 +1,4 @@
-package internal
+package hsm
 
 import (
 	"crypto/ecdsa"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/miekg/pkcs11"
+	"github.com/reznik99/go-hsm-doc/internal/pkcs11util"
 	"github.com/tink-crypto/tink-go/v2/kwp/subtle"
 )
 
@@ -89,13 +90,13 @@ func (p *P11) ExportPublicKeyEC(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 	}
 
 	// Parse EC_PARAMS
-	curve, err := ECParamsToCurve(attr[0].Value)
+	curve, err := pkcs11util.ECParamsToCurve(attr[0].Value)
 	if err != nil {
 		return nil, err
 	}
 
 	// Parse EC_POINT
-	x, y, err := ParseECPoint(curve, attr[1].Value)
+	x, y, err := pkcs11util.ParseECPoint(curve, attr[1].Value)
 	if err != nil {
 		return nil, err
 	}

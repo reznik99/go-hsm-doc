@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 	"math/big"
 
 	"github.com/miekg/pkcs11"
-	"github.com/reznik99/go-hsm-doc/internal"
+	"github.com/reznik99/go-hsm-doc/internal/pkcs11util"
 )
 
 type subjectPublicKeyInfo struct {
@@ -59,11 +59,11 @@ func publicKeySearchTemplate(publicKey any) ([]*pkcs11.Attribute, error) {
 			pkcs11.NewAttribute(pkcs11.CKA_PUBLIC_EXPONENT, big.NewInt(int64(key.E)).Bytes()),
 		}, nil
 	case *ecdsa.PublicKey:
-		params, err := internal.CurveNameToECParams(key.Params().Name)
+		params, err := pkcs11util.CurveNameToECParams(key.Params().Name)
 		if err != nil {
 			return nil, err
 		}
-		point, err := internal.MarshalECPoint(key)
+		point, err := pkcs11util.MarshalECPoint(key)
 		if err != nil {
 			return nil, err
 		}

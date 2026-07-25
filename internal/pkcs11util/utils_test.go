@@ -1,4 +1,4 @@
-package internal
+package pkcs11util
 
 import (
 	"bytes"
@@ -207,22 +207,5 @@ func TestAttributeToUint(t *testing.T) {
 	}
 	if _, err := AttributeToUint(&pkcs11.Attribute{Type: pkcs11.CKA_CLASS, Value: []byte{1, 2, 3}}); err == nil {
 		t.Error("3-byte: expected error, got nil")
-	}
-}
-
-func TestPadString(t *testing.T) {
-	cases := []struct {
-		value  string
-		number int
-		want   string
-	}{
-		{"ab", 4, "ab  "},     // appends |4-2| = 2 spaces
-		{"abcd", 2, "abcd  "}, // appends |2-4| = 2 spaces
-		{"x", 1, "x"},         // |1-1| = 0
-	}
-	for _, c := range cases {
-		if got := PadString(c.value, c.number); got != c.want {
-			t.Errorf("PadString(%q, %d) = %q, want %q", c.value, c.number, got, c.want)
-		}
 	}
 }
