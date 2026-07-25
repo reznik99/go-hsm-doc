@@ -36,7 +36,7 @@ func (p *P11) ExportCertificate(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 }
 
 // ExportPublicKey extracts, parses and prints a Public Key from the HSM
-func (p *P11) ExportPublicKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint32) ([]byte, error) {
+func (p *P11) ExportPublicKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) ([]byte, error) {
 	switch algorithm {
 	case pkcs11.CKK_RSA:
 		return p.ExportPublicKeyRSA(sh, oh)

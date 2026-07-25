@@ -24,7 +24,10 @@ var (
 func AttributeToString(attribute *pkcs11.Attribute) string {
 	switch attribute.Type {
 	case pkcs11.CKA_CLASS:
-		v := binary.LittleEndian.Uint32(attribute.Value)
+		v, err := AttributeToUint(attribute)
+		if err != nil {
+			return "N/A"
+		}
 		switch v {
 		case pkcs11.CKO_DATA:
 			return "DATA"
@@ -40,7 +43,10 @@ func AttributeToString(attribute *pkcs11.Attribute) string {
 			return "N/A"
 		}
 	case pkcs11.CKA_KEY_TYPE:
-		v := binary.LittleEndian.Uint32(attribute.Value)
+		v, err := AttributeToUint(attribute)
+		if err != nil {
+			return "N/A"
+		}
 		switch v {
 		case pkcs11.CKK_RSA:
 			return "RSA"
@@ -63,9 +69,25 @@ func AttributeToString(attribute *pkcs11.Attribute) string {
 		}
 	case pkcs11.CKA_LABEL:
 		return fmt.Sprintf("%q", string(attribute.Value))
+	case pkcs11.CKA_ID:
+		if len(attribute.Value) == 0 {
+			return "<empty>"
+		}
+		return fmt.Sprintf("%X", attribute.Value)
 	}
 
 	return "N/A"
+}
+
+func AttributeToUint(attribute *pkcs11.Attribute) (uint, error) {
+	switch len(attribute.Value) {
+	case 4:
+		return uint(binary.NativeEndian.Uint32(attribute.Value)), nil
+	case 8:
+		return uint(binary.NativeEndian.Uint64(attribute.Value)), nil
+	default:
+		return 0, fmt.Errorf("attribute %d has invalid integer length %d", attribute.Type, len(attribute.Value))
+	}
 }
 
 // StringToAttribute converts an algo string like "RSA" to a pkcs11 uint

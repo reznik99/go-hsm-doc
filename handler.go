@@ -2,7 +2,6 @@ package main
 
 import (
 	"crypto/x509"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -129,10 +128,11 @@ func (a *App) findToken() error {
 			a.log.Error("Failed to read token attributes", a.log.Args("object_handle", o), a.log.Args("error", err))
 			continue
 		}
-		option := fmt.Sprintf("[%02d] %s %s %s", o,
+		option := fmt.Sprintf("[%02d] %s %s %s ID:%s", o,
 			padString(internal.AttributeToString(attribs[1]), 4),
 			padString(internal.AttributeToString(attribs[2]), 11),
 			internal.AttributeToString(attribs[0]),
+			internal.AttributeToString(attribs[3]),
 		)
 		options = append(options, option)
 		handleMap[option] = o
@@ -313,6 +313,11 @@ func (a *App) importKey() error {
 		if parseErr != nil {
 			return parseErr
 		}
+		defaultID, parseErr := subjectKeyID(certificate.PublicKey)
+		if parseErr != nil {
+			return parseErr
+		}
+		objectID = a.resolveImportObjectID(selectedSlot, sh, certificate.PublicKey, defaultID, objectID)
 		objectHandle, err = a.mod.ImportCertificate(sh, certificate, keyLabel, objectID, false)
 	case "PublicKey":
 		block, parseErr := parsePEMBlock(rawToken, objectType)
@@ -328,6 +333,11 @@ func (a *App) importKey() error {
 			return detectionErr
 		}
 		pterm.Info.Printfln("Detected Algorithm: %s", algorithm)
+		defaultID, detectionErr := subjectKeyID(publicKey)
+		if detectionErr != nil {
+			return detectionErr
+		}
+		objectID = a.resolveImportObjectID(selectedSlot, sh, publicKey, defaultID, objectID)
 		objectHandle, err = a.mod.ImportPublicKey(sh, publicKey, keyLabel, objectID, false)
 	case "PrivateKey":
 		block, parseErr := parsePEMBlock(rawToken, objectType)
@@ -343,6 +353,15 @@ func (a *App) importKey() error {
 			return detectionErr
 		}
 		pterm.Info.Printfln("Detected Algorithm: %s", algorithm)
+		publicKey, detectionErr := publicKeyFromPrivateKey(privateKey)
+		if detectionErr != nil {
+			return detectionErr
+		}
+		defaultID, detectionErr := subjectKeyID(publicKey)
+		if detectionErr != nil {
+			return detectionErr
+		}
+		objectID = a.resolveImportObjectID(selectedSlot, sh, publicKey, defaultID, objectID)
 		objectHandle, err = a.mod.ImportPrivateKey(sh, block.Bytes, keyLabel, objectID, algorithm, extractable, false)
 	case "SecretKey":
 		algorithm, promptErr := a.interactiveSelect.WithOptions(a.secretKeyAlgorithms).Show("Select Algorithm")
@@ -400,7 +419,7 @@ func (a *App) promptSlotSelection() (uint, error) {
 }
 
 func (a *App) promptObjectID() ([]byte, error) {
-	raw, err := a.interactiveText.Show("Object ID (HEX, blank to generate)")
+	raw, err := a.interactiveText.Show("Object ID (HEX, blank for automatic)")
 	if err != nil {
 		return nil, err
 	}
@@ -424,29 +443,49 @@ func (a *App) printObjectID(sh pkcs11.SessionHandle, objectHandle pkcs11.ObjectH
 	if err != nil {
 		return err
 	}
-	pterm.Info.Printfln("Object ID: %X", attributes[0].Value)
+	pterm.Info.Printfln("Object ID: %s", internal.AttributeToString(attributes[0]))
 	return nil
 }
 
 func (a *App) getAttributeValue(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]*pkcs11.Attribute, error) {
 	attribs, err := a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
 		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
 	})
 	if err != nil {
-		attribs, err = a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
-			pkcs11.NewAttribute(pkcs11.CKA_LABEL, nil),
-			pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
+		return nil, err
+	}
+	class, err := internal.AttributeToUint(attribs[1])
+	if err != nil {
+		return nil, err
+	}
+
+	keyType := pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil)
+	objectID := pkcs11.NewAttribute(pkcs11.CKA_ID, nil)
+	switch class {
+	case pkcs11.CKO_PUBLIC_KEY, pkcs11.CKO_PRIVATE_KEY, pkcs11.CKO_SECRET_KEY:
+		keyAttributes, err := a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
+			pkcs11.NewAttribute(pkcs11.CKA_ID, nil),
 		})
 		if err != nil {
 			return nil, err
 		}
-		attribs = append(attribs, attribs[1])
-		attribs[1] = pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, 1000) // Add fake attribute so it shows up as N/A
+		keyType = keyAttributes[0]
+		objectID = keyAttributes[1]
+	case pkcs11.CKO_CERTIFICATE:
+		idAttributes, err := a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+			pkcs11.NewAttribute(pkcs11.CKA_ID, nil),
+		})
+		if err != nil && !errors.Is(err, pkcs11.Error(pkcs11.CKR_ATTRIBUTE_TYPE_INVALID)) {
+			return nil, err
+		}
+		if err == nil {
+			objectID = idAttributes[0]
+		}
 	}
 
-	return attribs, nil
+	return []*pkcs11.Attribute{attribs[0], keyType, attribs[1], objectID}, nil
 }
 
 func (a *App) printObjectInfo(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
@@ -458,6 +497,7 @@ func (a *App) printObjectInfo(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) er
 		a.log.Args("Algorithm", padString(internal.AttributeToString(attribs[1]), 4)),
 		a.log.Args("Type", padString(internal.AttributeToString(attribs[2]), 11)),
 		a.log.Args("Label", internal.AttributeToString(attribs[0])),
+		a.log.Args("ID", internal.AttributeToString(attribs[3])),
 	)
 	return nil
 }
@@ -479,8 +519,14 @@ func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byt
 		return nil, err
 	}
 
-	algorithmType := binary.LittleEndian.Uint32(attribs[0].Value)
-	objectType := binary.LittleEndian.Uint32(attribs[1].Value)
+	algorithmType, err := internal.AttributeToUint(attribs[0])
+	if err != nil {
+		return nil, err
+	}
+	objectType, err := internal.AttributeToUint(attribs[1])
+	if err != nil {
+		return nil, err
+	}
 
 	var token []byte
 	switch objectType {

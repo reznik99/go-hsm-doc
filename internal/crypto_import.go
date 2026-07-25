@@ -18,13 +18,6 @@ import (
 
 // ImportCertificate imports a certificate into the HSM without wrapping.
 func (p *P11) ImportCertificate(sh pkcs11.SessionHandle, cert *x509.Certificate, label string, objectID []byte, ephemeral bool) (pkcs11.ObjectHandle, error) {
-	if objectID == nil {
-		objectID = make([]byte, 16)
-		if _, err := rand.Read(objectID); err != nil {
-			return 0, fmt.Errorf("generate object ID: %w", err)
-		}
-	}
-
 	template := []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_SUBJECT, cert.RawSubject),
 		pkcs11.NewAttribute(pkcs11.CKA_VALUE, cert.Raw),
@@ -39,13 +32,6 @@ func (p *P11) ImportCertificate(sh pkcs11.SessionHandle, cert *x509.Certificate,
 
 // ImportPublicKey imports an RSA or EC public key into the HSM without wrapping.
 func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string, objectID []byte, ephemeral bool) (pkcs11.ObjectHandle, error) {
-	if objectID == nil {
-		objectID = make([]byte, 16)
-		if _, err := rand.Read(objectID); err != nil {
-			return 0, fmt.Errorf("generate object ID: %w", err)
-		}
-	}
-
 	switch publicKey := pub.(type) {
 	case *rsa.PublicKey:
 		// CKA_PUBLIC_EXPONENT is a minimal big-endian integer.
@@ -88,13 +74,6 @@ func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string,
 
 // ImportSecretKey imports an AES/DES/3DES secret key using an ephemeral RSA 2048 wrapping key.
 func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keyLabel string, objectID []byte, algorithm string, extractable, ephemeral bool) (handle pkcs11.ObjectHandle, err error) {
-	if objectID == nil {
-		objectID = make([]byte, 16)
-		if _, err := rand.Read(objectID); err != nil {
-			return 0, fmt.Errorf("generate object ID: %w", err)
-		}
-	}
-
 	// Generate Ephemeral RSA wrapping keypair and extract the public key
 	wrappingKeyHandle, unwrappingKeyHandle, err := p.GenerateRSAKeypair(sh, time.Now().Format(time.DateTime), nil, 2048, false, true)
 	if err != nil {
@@ -153,13 +132,6 @@ func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keyLabel s
 
 // ImportPrivateKey imports an RSA or EC private key using an ephemeral AES 256 wrapping key.
 func (p *P11) ImportPrivateKey(sh pkcs11.SessionHandle, rawKey []byte, keyLabel string, objectID []byte, algorithm string, extractable, ephemeral bool) (handle pkcs11.ObjectHandle, err error) {
-	if objectID == nil {
-		objectID = make([]byte, 16)
-		if _, err := rand.Read(objectID); err != nil {
-			return 0, fmt.Errorf("generate object ID: %w", err)
-		}
-	}
-
 	// Generate AES wrapping Key
 	var wrappingKey = make([]byte, 32)
 	if _, err := rand.Read(wrappingKey); err != nil {
