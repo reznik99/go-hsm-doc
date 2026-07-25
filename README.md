@@ -1,4 +1,4 @@
-# GO-HSM-DOC
+# HSM-Doctor
 
 [![CI](https://github.com/reznik99/go-hsm-doc/actions/workflows/ci.yml/badge.svg)](https://github.com/reznik99/go-hsm-doc/actions/workflows/ci.yml)
 ![Coverage](https://img.shields.io/badge/coverage-16.6%25-red)

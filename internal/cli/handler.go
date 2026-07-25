@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -147,8 +148,14 @@ func (a *App) findToken() error {
 		return fmt.Errorf("invalid token selection: %q", selected)
 	}
 
+	// "Generate CSR" only applies to private keys (they sign the request).
+	operations := slices.Clone(a.keyOperations)
+	if class, err := a.objectClass(sh, oh); err == nil && class == pkcs11.CKO_PRIVATE_KEY {
+		operations = slices.Insert(operations, len(operations)-1, "Generate CSR")
+	}
+
 	for {
-		operation, err := a.interactiveSelect.WithOptions(a.keyOperations).Show("Select operation")
+		operation, err := a.interactiveSelect.WithOptions(operations).Show("Select operation")
 		if err != nil {
 			return err
 		}
@@ -160,6 +167,8 @@ func (a *App) findToken() error {
 			err = a.printObjectInfo(sh, oh)
 		case "Export":
 			_, err = a.exportToken(sh, oh)
+		case "Generate CSR":
+			err = a.generateCSR(selectedSlot, sh, oh)
 		case "Delete":
 			return a.deleteToken(selectedSlot, sh, oh)
 		}
@@ -498,6 +507,17 @@ func (a *App) printObjectInfo(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) er
 		a.log.Args("ID", pkcs11util.AttributeToString(attribs[3])),
 	)
 	return nil
+}
+
+// objectClass returns the CKA_CLASS of an object (CKO_PRIVATE_KEY, CKO_CERTIFICATE, ...).
+func (a *App) objectClass(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) (uint, error) {
+	attrs, err := a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
+	})
+	if err != nil {
+		return 0, err
+	}
+	return pkcs11util.AttributeToUint(attrs[0])
 }
 
 func (a *App) deleteToken(slotID uint, sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) error {
