@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -304,10 +305,16 @@ func (a *App) importKey() error {
 		}
 	}
 
-	rawToken, err := a.interactiveText.WithMultiLine(true).Show(fmt.Sprintf("Enter %q", objectType))
+	tokenPath, err := a.browseForFile()
 	if err != nil {
 		return err
 	}
+	// Path is chosen by the user through the interactive browser, under their own permissions.
+	contents, err := os.ReadFile(tokenPath) //nolint:gosec // user-selected path, no trust boundary crossed
+	if err != nil {
+		return fmt.Errorf("read %s file: %w", objectType, err)
+	}
+	rawToken := string(contents)
 
 	sh, err := a.mod.OpenSession(selectedSlot)
 	if err != nil {
@@ -532,41 +539,40 @@ func (a *App) deleteToken(slotID uint, sh pkcs11.SessionHandle, o pkcs11.ObjectH
 }
 
 func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byte, error) {
-	attribs, err := a.mod.Ctx.GetAttributeValue(sh, o, []*pkcs11.Attribute{
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
-		pkcs11.NewAttribute(pkcs11.CKA_CLASS, nil),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	algorithmType, err := pkcs11util.AttributeToUint(attribs[0])
-	if err != nil {
-		return nil, err
-	}
-	objectType, err := pkcs11util.AttributeToUint(attribs[1])
+	objectType, err := a.objectClass(sh, o)
 	if err != nil {
 		return nil, err
 	}
 
 	var token []byte
+	var defaultName string
 	switch objectType {
 	case pkcs11.CKO_CERTIFICATE:
 		token, err = a.mod.ExportCertificate(sh, o)
-		fmt.Printf("%s\n", token)
+		defaultName = "certificate.pem"
 	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY:
-		token, err = a.mod.ExportPublicKey(sh, o, algorithmType)
-		fmt.Printf("%s\n", token)
+		token, err = a.mod.ExportPublicKey(sh, o)
+		defaultName = "public-key.pem"
 	case pkcs11.CKO_PRIVATE_KEY:
 		token, err = a.mod.ExportPrivateKey(sh, o)
-		fmt.Printf("%s\n", token)
+		defaultName = "private-key.pem"
 	case pkcs11.CKO_SECRET_KEY:
 		token, err = a.mod.ExportSecretKey(sh, o)
-		fmt.Printf("%X\n", token)
+		defaultName = "secret-key.hex"
 	default:
 		return nil, fmt.Errorf("unrecognized object type: %d", objectType)
 	}
-	return token, err
+	if err != nil {
+		return nil, err
+	}
+	if objectType == pkcs11.CKO_SECRET_KEY {
+		token = []byte(fmt.Sprintf("%X", token)) // raw key bytes aren't printable; store hex
+	}
+
+	if err := a.writeOutput(defaultName, token); err != nil {
+		return nil, err
+	}
+	return token, nil
 }
 
 // padString right-pads value with spaces up to width, for column alignment.

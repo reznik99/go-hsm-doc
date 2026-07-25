@@ -1,8 +1,8 @@
 # PIV / Smartcard — remaining work
 
 Working TODO. Core PIV support (capability gating, management-key auth, CKA_ID slot
-picker, label-skip) is done and hardware-verified on a YubiKey 5. Delete this file
-once the items below are done.
+picker, label-skip, and CSR generation signed on the token) is done and hardware-verified
+on a YubiKey 5. Delete this file once the items below are done.
 
 ## 4. Export / import constraints
 

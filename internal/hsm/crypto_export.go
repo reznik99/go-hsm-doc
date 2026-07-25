@@ -36,15 +36,26 @@ func (p *P11) ExportCertificate(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle)
 	return pem.EncodeToMemory(block), nil
 }
 
-// ExportPublicKey extracts, parses and prints a Public Key from the HSM
-func (p *P11) ExportPublicKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle, algorithm uint) ([]byte, error) {
-	switch algorithm {
+// ExportPublicKey returns an RSA or EC public key object as PKIX PEM.
+func (p *P11) ExportPublicKey(sh pkcs11.SessionHandle, oh pkcs11.ObjectHandle) ([]byte, error) {
+	attrs, err := p.Ctx.GetAttributeValue(sh, oh, []*pkcs11.Attribute{
+		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
+	})
+	if err != nil {
+		return nil, err
+	}
+	keyType, err := pkcs11util.AttributeToUint(attrs[0])
+	if err != nil {
+		return nil, err
+	}
+
+	switch keyType {
 	case pkcs11.CKK_RSA:
 		return p.ExportPublicKeyRSA(sh, oh)
 	case pkcs11.CKK_EC:
 		return p.ExportPublicKeyEC(sh, oh)
 	default:
-		return nil, fmt.Errorf("unrecognized algorithm: %d", algorithm)
+		return nil, fmt.Errorf("unrecognized key type: %d", keyType)
 	}
 }
 

@@ -10,7 +10,6 @@ import (
 	"fmt"
 
 	"github.com/miekg/pkcs11"
-	"github.com/reznik99/go-hsm-doc/internal/pkcs11util"
 )
 
 // generateCSR builds a PKCS#10 CSR for the selected private key — signed on the token
@@ -44,7 +43,6 @@ func (a *App) generateCSR(slotID uint, sh pkcs11.SessionHandle, privateKey pkcs1
 func (a *App) publicKeyFor(slotID uint, sh pkcs11.SessionHandle, privateKey pkcs11.ObjectHandle) (crypto.PublicKey, error) {
 	attrs, err := a.mod.Ctx.GetAttributeValue(sh, privateKey, []*pkcs11.Attribute{
 		pkcs11.NewAttribute(pkcs11.CKA_ID, nil),
-		pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, nil),
 	})
 	if err != nil {
 		return nil, err
@@ -52,10 +50,6 @@ func (a *App) publicKeyFor(slotID uint, sh pkcs11.SessionHandle, privateKey pkcs
 	id := attrs[0].Value
 	if len(id) == 0 {
 		return nil, errors.New("private key has no CKA_ID; cannot find its public key")
-	}
-	keyType, err := pkcs11util.AttributeToUint(attrs[1])
-	if err != nil {
-		return nil, err
 	}
 
 	publicKeys, err := a.mod.FindObjects(slotID, []*pkcs11.Attribute{
@@ -69,7 +63,7 @@ func (a *App) publicKeyFor(slotID uint, sh pkcs11.SessionHandle, privateKey pkcs
 		return nil, errors.New("no public key with a matching CKA_ID in this slot")
 	}
 
-	pemBytes, err := a.mod.ExportPublicKey(sh, publicKeys[0], keyType)
+	pemBytes, err := a.mod.ExportPublicKey(sh, publicKeys[0])
 	if err != nil {
 		return nil, fmt.Errorf("read public key: %w", err)
 	}
