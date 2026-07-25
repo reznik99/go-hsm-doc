@@ -10,7 +10,7 @@
 <br />
 <div align="center">
   <p align="center">
-    A simple CLI tool to view, inspect and debug PKCS#11-compliant HSMs and PIV smartcards.
+    A simple CLI tool to inspect, debug and manage keys on PKCS#11-compliant HSMs and PIV smartcards.
   </p>
 
   ![HSM-Doctor demo](res/tui.gif)  
@@ -18,12 +18,11 @@
 </div>
 
 ### Functionality
-1. Get HSM and Token info
-2. List Slots and Keys within a Slot
-3. Delete Certificates, Public, Private and Symmetric keys
-4. Export Certificates, Public, Private and Symmetric keys
-5. Import Certificates, Public, Private and Symmetric keys
-6. Generate RSA, EC, AES, 3DES, DES keys (menu adapts to what the token actually supports)
+1. Inspect HSM, slot and token info
+2. List slots and the objects inside them
+3. Generate RSA, EC, AES, DES and 3DES keys (menu adapts to what the token supports)
+4. Import, export and delete certificates and keys
+5. Generate a CSR from a key, signed on the token (HSM and PIV)
 
 ## Getting Started
 
