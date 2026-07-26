@@ -1,6 +1,7 @@
 package pkcs11util
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -60,6 +61,54 @@ func TestParsePrivateKey(t *testing.T) {
 	}
 	if _, err := ParsePrivateKey([]byte{1, 2, 3}); err == nil {
 		t.Error("garbage: expected error, got nil")
+	}
+}
+
+func TestPKCS8EncryptRoundTrip(t *testing.T) {
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa keygen: %v", err)
+	}
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ec keygen: %v", err)
+	}
+
+	const passphrase = "correct horse battery staple"
+	cases := []struct {
+		name string
+		key  any
+	}{
+		{"rsa", rsaKey},
+		{"ec", ecKey},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			plain, err := x509.MarshalPKCS8PrivateKey(c.key)
+			if err != nil {
+				t.Fatalf("marshal pkcs8: %v", err)
+			}
+
+			encrypted, err := EncryptPKCS8(plain, passphrase)
+			if err != nil {
+				t.Fatalf("encrypt: %v", err)
+			}
+			if _, err := x509.ParsePKCS8PrivateKey(encrypted); err == nil {
+				t.Error("encrypted output still parses as plaintext PKCS#8")
+			}
+
+			decrypted, err := DecryptPKCS8(encrypted, passphrase)
+			if err != nil {
+				t.Fatalf("decrypt: %v", err)
+			}
+			if !bytes.Equal(decrypted, plain) {
+				t.Error("round-trip did not recover the original key")
+			}
+
+			if _, err := DecryptPKCS8(encrypted, "wrong passphrase"); err == nil {
+				t.Error("wrong passphrase: expected error, got nil")
+			}
+		})
 	}
 }
 

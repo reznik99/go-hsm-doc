@@ -3,6 +3,7 @@ package cli
 import (
 	"crypto/x509"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"os"
@@ -372,7 +373,18 @@ func (a *App) importKey() error {
 		if parseErr != nil {
 			return parseErr
 		}
-		privateKey, parseErr := pkcs11util.ParsePrivateKey(block.Bytes)
+		keyDER := block.Bytes
+		if block.Type == "ENCRYPTED PRIVATE KEY" {
+			passphrase, promptErr := a.interactiveText.WithMask("*").Show("PKCS#8 passphrase")
+			if promptErr != nil {
+				return promptErr
+			}
+			keyDER, parseErr = pkcs11util.DecryptPKCS8(keyDER, passphrase)
+			if parseErr != nil {
+				return fmt.Errorf("decrypt PKCS#8 key (wrong passphrase?): %w", parseErr)
+			}
+		}
+		privateKey, parseErr := pkcs11util.ParsePrivateKey(keyDER)
 		if parseErr != nil {
 			return parseErr
 		}
@@ -391,7 +403,7 @@ func (a *App) importKey() error {
 		}
 		objectID = a.resolveImportObjectID(selectedSlot, sh, publicKey, defaultID, objectID)
 		objectHandle, err = a.withElevatedAuth(selectedSlot, func() (pkcs11.ObjectHandle, error) {
-			return a.mod.ImportPrivateKey(sh, block.Bytes, keyLabel, objectID, algorithm, extractable, false)
+			return a.mod.ImportPrivateKey(sh, keyDER, keyLabel, objectID, algorithm, extractable, false)
 		})
 	case "SecretKey":
 		algorithm, promptErr := a.interactiveSelect.WithOptions(a.secretKeyAlgorithms).Show("Select Algorithm")
@@ -586,6 +598,11 @@ func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byt
 	if err != nil {
 		return nil, err
 	}
+	if objectType == pkcs11.CKO_PRIVATE_KEY {
+		if token, err = a.promptEncryptPrivateKey(token); err != nil {
+			return nil, err
+		}
+	}
 	if objectType == pkcs11.CKO_SECRET_KEY {
 		token = []byte(fmt.Sprintf("%X", token)) // raw key bytes aren't printable; store hex
 	}
@@ -594,6 +611,34 @@ func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byt
 		return nil, err
 	}
 	return token, nil
+}
+
+// promptEncryptPrivateKey returns the key as encrypted PKCS#8, or unchanged if the passphrase is left empty.
+func (a *App) promptEncryptPrivateKey(keyPEM []byte) ([]byte, error) {
+	passphrase, err := a.interactiveText.WithMask("*").Show("PKCS#8 encryption passphrase (empty = unencrypted)")
+	if err != nil {
+		return nil, err
+	}
+	if passphrase == "" {
+		return keyPEM, nil
+	}
+	confirm, err := a.interactiveText.WithMask("*").Show("Confirm passphrase")
+	if err != nil {
+		return nil, err
+	}
+	if confirm != passphrase {
+		return nil, errors.New("passphrases do not match")
+	}
+
+	block, _ := pem.Decode(keyPEM)
+	if block == nil {
+		return nil, errors.New("exported key is not valid PEM")
+	}
+	encrypted, err := pkcs11util.EncryptPKCS8(block.Bytes, passphrase)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt PKCS#8 key: %w", err)
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "ENCRYPTED PRIVATE KEY", Bytes: encrypted}), nil
 }
 
 // padString right-pads value with spaces up to width, for column alignment.
