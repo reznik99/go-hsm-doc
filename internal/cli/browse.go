@@ -97,7 +97,16 @@ func (a *App) writeOutput(defaultName string, data []byte) error {
 		name = defaultName
 	}
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) //nolint:gosec // user-selected path, no trust boundary crossed
+	if err != nil {
+		return fmt.Errorf("create %q: %w", path, err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			a.log.Error("Failed to close output file", a.log.Args("path", path), a.log.Args("error", err))
+		}
+	}()
+	if _, err := file.Write(data); err != nil {
 		return fmt.Errorf("write %q: %w", path, err)
 	}
 	pterm.Success.Printfln("Wrote %s", path)

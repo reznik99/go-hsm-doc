@@ -410,7 +410,7 @@ func (a *App) importKey() error {
 		if promptErr != nil {
 			return promptErr
 		}
-		secretKey, decodeErr := hex.DecodeString(rawToken)
+		secretKey, decodeErr := hex.DecodeString(strings.TrimSpace(rawToken))
 		if decodeErr != nil {
 			return fmt.Errorf("secret key not in HEX string format: %w", decodeErr)
 		}
