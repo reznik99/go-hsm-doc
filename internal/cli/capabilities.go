@@ -22,14 +22,14 @@ type keySizePreset struct {
 }
 
 func (a *App) loadCapabilities() error {
-	slots, loadErr := a.mod.GetSlots()
+	slots, loadErr := a.mod.GetSlots(true)
 	a.capabilities = make(map[uint]slotCapabilities, len(slots))
 
-	for slotID := range slots {
-		mechanisms, err := a.mod.GetMechanisms(slotID)
-		a.capabilities[slotID] = slotCapabilities{mechanisms: mechanisms}
+	for _, slot := range slots {
+		mechanisms, err := a.mod.GetMechanisms(slot.ID)
+		a.capabilities[slot.ID] = slotCapabilities{mechanisms: mechanisms}
 		if err != nil {
-			loadErr = errors.Join(loadErr, fmt.Errorf("load capabilities for slot %d: %w", slotID, err))
+			loadErr = errors.Join(loadErr, fmt.Errorf("load capabilities for slot %d: %w", slot.ID, err))
 		}
 	}
 

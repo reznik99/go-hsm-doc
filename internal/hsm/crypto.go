@@ -12,6 +12,11 @@ type P11 struct {
 	Sessions map[uint]pkcs11.SessionHandle
 }
 
+type Slot struct {
+	ID    uint
+	Token pkcs11.TokenInfo
+}
+
 func NewP11(modulePath string) (*P11, error) {
 	// Check the concrete return before storing it in the interface field: a nil
 	// *pkcs11.Ctx placed in a Cryptoki would be a non-nil interface (typed nil).
@@ -30,28 +35,29 @@ func NewP11(modulePath string) (*P11, error) {
 	}, nil
 }
 
-func (p *P11) GetSlots() (map[uint]pkcs11.TokenInfo, error) {
-	output := map[uint]pkcs11.TokenInfo{}
+func (p *P11) GetSlots(tokenPresent bool) ([]Slot, error) {
 	var getSlotErr error
 
-	slots, err := p.Ctx.GetSlotList(true)
+	slotIDs, err := p.Ctx.GetSlotList(tokenPresent)
 	if err != nil {
 		return nil, fmt.Errorf("error reading Slots: %w", err)
 	}
+	slots := make([]Slot, 0, len(slotIDs))
 
-	for _, slotID := range slots {
+	for _, slotID := range slotIDs {
 		ti, err := p.Ctx.GetTokenInfo(slotID)
 		if err != nil {
+			if !tokenPresent && errors.Is(err, pkcs11.Error(pkcs11.CKR_TOKEN_NOT_PRESENT)) {
+				slots = append(slots, Slot{ID: slotID})
+				continue
+			}
 			getSlotErr = errors.Join(getSlotErr, fmt.Errorf("get token info for slot %d: %w", slotID, err))
 			continue
 		}
-		if ti.Label == "" {
-			continue
-		}
-		output[slotID] = ti
+		slots = append(slots, Slot{ID: slotID, Token: ti})
 	}
 
-	return output, getSlotErr
+	return slots, getSlotErr
 }
 
 func (p *P11) FindObjects(slotID uint, template []*pkcs11.Attribute) (objects []pkcs11.ObjectHandle, err error) {

@@ -99,20 +99,36 @@ func TestOpenSessionOpensAndCaches(t *testing.T) {
 	}
 }
 
-func TestGetSlotsSkipsUnlabeledAndJoinsErrors(t *testing.T) {
+func TestGetSlotsIncludesUnlabeledAndJoinsErrors(t *testing.T) {
 	ctx := mocks.NewMockCryptoki(t)
 	ctx.EXPECT().GetSlotList(true).Return([]uint{0, 1, 2}, nil)
 	ctx.EXPECT().GetTokenInfo(uint(0)).Return(pkcs11.TokenInfo{Label: "token-0"}, nil)
-	ctx.EXPECT().GetTokenInfo(uint(1)).Return(pkcs11.TokenInfo{Label: ""}, nil) // unlabeled -> skipped
-	ctx.EXPECT().GetTokenInfo(uint(2)).Return(pkcs11.TokenInfo{}, errToken)     // error -> skipped + joined
+	ctx.EXPECT().GetTokenInfo(uint(1)).Return(pkcs11.TokenInfo{Label: ""}, nil)
+	ctx.EXPECT().GetTokenInfo(uint(2)).Return(pkcs11.TokenInfo{}, errToken)
 
 	p11 := &P11{Ctx: ctx, Sessions: map[uint]pkcs11.SessionHandle{}}
-	slots, err := p11.GetSlots()
+	slots, err := p11.GetSlots(true)
 	if err == nil {
 		t.Error("expected joined error from the failing slot, got nil")
 	}
-	if len(slots) != 1 || slots[0].Label != "token-0" {
-		t.Errorf("slots = %v, want only slot 0 (token-0)", slots)
+	if len(slots) != 2 || slots[0].ID != 0 || slots[0].Token.Label != "token-0" || slots[1].ID != 1 || slots[1].Token.Label != "" {
+		t.Errorf("slots = %v, want labeled slot 0 and unlabeled slot 1", slots)
+	}
+}
+
+func TestGetSlotsIncludesSlotsWithoutTokens(t *testing.T) {
+	ctx := mocks.NewMockCryptoki(t)
+	ctx.EXPECT().GetSlotList(false).Return([]uint{0, 1}, nil)
+	ctx.EXPECT().GetTokenInfo(uint(0)).Return(pkcs11.TokenInfo{Label: "token-0"}, nil)
+	ctx.EXPECT().GetTokenInfo(uint(1)).Return(pkcs11.TokenInfo{}, pkcs11.Error(pkcs11.CKR_TOKEN_NOT_PRESENT))
+
+	p11 := &P11{Ctx: ctx, Sessions: map[uint]pkcs11.SessionHandle{}}
+	slots, err := p11.GetSlots(false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(slots) != 2 || slots[0].ID != 0 || slots[0].Token.Label != "token-0" || slots[1].ID != 1 || slots[1].Token.Label != "" {
+		t.Errorf("slots = %v, want token slot 0 and empty slot 1", slots)
 	}
 }
 

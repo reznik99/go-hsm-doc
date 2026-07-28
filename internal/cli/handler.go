@@ -36,24 +36,35 @@ func (a *App) listHSMInfo() error {
 }
 
 func (a *App) listSlots() error {
-	slots, err := a.mod.GetSlots()
+	slots, err := a.mod.GetSlots(false)
 	if err != nil {
 		a.log.Warn("Some slots could not be read", a.log.Args("error", err))
 		if len(slots) == 0 {
 			return err
 		}
 	}
-	for slotID, slot := range slots {
+	for _, slot := range slots {
+		slotID := slot.ID
 		si, err := a.mod.Ctx.GetSlotInfo(slotID)
 		if err != nil {
 			a.log.Warn("Failed to get slot info", a.log.Args("slot_id", slotID), a.log.Args("error", err))
 			continue
 		}
-		a.log.Info(fmt.Sprintf("-> %s [%d]", slot.Label, slotID),
-			a.log.Args("Label", slot.Label),
-			a.log.Args("Model", slot.Model),
-			a.log.Args("SerialNumber", slot.SerialNumber),
-			a.log.Args("MaxRwSessionCount", slot.MaxRwSessionCount),
+		tokenPresent := si.Flags&pkcs11.CKF_TOKEN_PRESENT != 0
+		label := strings.TrimSpace(slot.Token.Label)
+		if label == "" {
+			if tokenPresent {
+				label = "<unlabelled token>"
+			} else {
+				label = "<no token>"
+			}
+		}
+		a.log.Info(fmt.Sprintf("-> %s [%d]", label, slotID),
+			a.log.Args("TokenPresent", tokenPresent),
+			a.log.Args("Label", slot.Token.Label),
+			a.log.Args("Model", slot.Token.Model),
+			a.log.Args("SerialNumber", slot.Token.SerialNumber),
+			a.log.Args("MaxRwSessionCount", slot.Token.MaxRwSessionCount),
 			a.log.Args("ManufacturerID", si.ManufacturerID),
 			a.log.Args("SlotDescription", si.SlotDescription),
 			a.log.Args("HardwareVersion", fmt.Sprintf("v%d.%d", si.HardwareVersion.Major, si.HardwareVersion.Minor)),
@@ -436,27 +447,37 @@ func (a *App) importKey() error {
 
 func (a *App) promptSlotSelection() (uint, error) {
 	options := []string{}
-	slots, err := a.mod.GetSlots()
+	slots, err := a.mod.GetSlots(true)
 	if err != nil {
 		a.log.Warn("Some slots could not be read", a.log.Args("error", err))
 		if len(slots) == 0 {
 			return 0, err
 		}
 	}
-
-	for _, slot := range slots {
-		options = append(options, slot.Label)
+	if len(slots) == 0 {
+		return 0, errors.New("no slots with tokens found")
 	}
 
-	slotLabel, err := a.interactiveSelect.WithOptions(options).Show("Select Slot")
+	slotByOption := make(map[string]uint, len(slots))
+	for _, slot := range slots {
+		label := strings.TrimSpace(slot.Token.Label)
+		if label == "" {
+			label = "<unlabelled token>"
+		}
+		option := fmt.Sprintf("[%d] %s", slot.ID, label)
+		if serial := strings.TrimSpace(slot.Token.SerialNumber); serial != "" {
+			option += fmt.Sprintf(" (Serial: %s)", serial)
+		}
+		options = append(options, option)
+		slotByOption[option] = slot.ID
+	}
+
+	selected, err := a.interactiveSelect.WithOptions(options).Show("Select Slot")
 	if err != nil {
 		return 0, fmt.Errorf("slot selection error: %w", err)
 	}
-
-	for slotID, slot := range slots {
-		if slot.Label == slotLabel {
-			return slotID, nil
-		}
+	if slotID, ok := slotByOption[selected]; ok {
+		return slotID, nil
 	}
 
 	return 0, errors.New("slot not selected")
@@ -577,7 +598,7 @@ func (a *App) exportToken(sh pkcs11.SessionHandle, o pkcs11.ObjectHandle) ([]byt
 	case pkcs11.CKO_CERTIFICATE:
 		token, err = a.mod.ExportCertificate(sh, o)
 		defaultName = "certificate.pem"
-	case pkcs11.CKO_DATA, pkcs11.CKO_PUBLIC_KEY:
+	case pkcs11.CKO_PUBLIC_KEY:
 		token, err = a.mod.ExportPublicKey(sh, o)
 		defaultName = "public-key.pem"
 	case pkcs11.CKO_PRIVATE_KEY:
