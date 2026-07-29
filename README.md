@@ -24,6 +24,21 @@
 4. Import, export and delete certificates and keys
 5. Generate a CSR from a key, signed on the token (HSM and PIV)
 
+### Supported private keys
+
+Private-key import supports RSA and ECDSA keys. All successful inputs are converted to unencrypted PKCS#8 DER before import.
+
+| Key encoding | PEM | Raw DER | Password protection |
+|---|---|---|---|
+| PKCS#1 RSA | Yes | Yes | Legacy RFC 1423 PEM encryption |
+| SEC1 EC | Yes | Yes | Legacy RFC 1423 PEM encryption |
+| PKCS#8 RSA or EC | Yes | Yes | PBES2 encrypted PKCS#8 in PEM or DER |
+| OpenSSH RSA or ECDSA | Yes | No | bcrypt-encrypted OpenSSH PEM |
+
+PEM is an ASCII wrapper around the encoded key. An encrypted PKCS#8 PEM contains the same encrypted PKCS#8 structure as encrypted DER.
+
+Legacy PEM encryption applies encryption through PEM headers and is only supported for PKCS#1 RSA and SEC1 EC keys. OpenSSH is a separate key format and has no DER form.
+
 ## Getting Started
 
 ### Requirements

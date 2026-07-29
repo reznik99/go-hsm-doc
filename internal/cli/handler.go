@@ -326,8 +326,6 @@ func (a *App) importKey() error {
 	if err != nil {
 		return fmt.Errorf("read %s file: %w", objectType, err)
 	}
-	rawToken := string(contents)
-
 	sh, err := a.mod.OpenSession(selectedSlot)
 	if err != nil {
 		return fmt.Errorf("open session error: %w", err)
@@ -341,11 +339,11 @@ func (a *App) importKey() error {
 	var objectHandle pkcs11.ObjectHandle
 	switch objectType {
 	case "Certificate":
-		block, parseErr := pkcs11util.ParsePEMBlock(rawToken, objectType)
+		certificateDER, _, parseErr := pkcs11util.DecodePEMOrDER(contents)
 		if parseErr != nil {
 			return parseErr
 		}
-		certificate, parseErr := x509.ParseCertificate(block.Bytes)
+		certificate, parseErr := x509.ParseCertificate(certificateDER)
 		if parseErr != nil {
 			return parseErr
 		}
@@ -358,11 +356,7 @@ func (a *App) importKey() error {
 			return a.mod.ImportCertificate(sh, certificate, keyLabel, objectID, false)
 		})
 	case "PublicKey":
-		block, parseErr := pkcs11util.ParsePEMBlock(rawToken, objectType)
-		if parseErr != nil {
-			return parseErr
-		}
-		publicKey, parseErr := x509.ParsePKIXPublicKey(block.Bytes)
+		publicKey, parseErr := pkcs11util.ParsePublicKey(contents)
 		if parseErr != nil {
 			return parseErr
 		}
@@ -380,24 +374,16 @@ func (a *App) importKey() error {
 			return a.mod.ImportPublicKey(sh, publicKey, keyLabel, objectID, false)
 		})
 	case "PrivateKey":
-		block, parseErr := pkcs11util.ParsePEMBlock(rawToken, objectType)
-		if parseErr != nil {
-			return parseErr
-		}
-		keyDER := block.Bytes
-		if block.Type == "ENCRYPTED PRIVATE KEY" {
-			passphrase, promptErr := a.interactiveText.WithMask("*").Show("PKCS#8 passphrase")
+		privateKey, keyDER, parseErr := pkcs11util.ParsePrivateKey(contents, nil)
+		if errors.Is(parseErr, pkcs11util.ErrPassphraseRequired) {
+			passphrase, promptErr := a.interactiveText.WithMask("*").Show("Private key passphrase")
 			if promptErr != nil {
 				return promptErr
 			}
-			keyDER, parseErr = pkcs11util.DecryptPKCS8(keyDER, passphrase)
-			if parseErr != nil {
-				return fmt.Errorf("decrypt PKCS#8 key (wrong passphrase?): %w", parseErr)
-			}
+			privateKey, keyDER, parseErr = pkcs11util.ParsePrivateKey(contents, []byte(passphrase))
 		}
-		privateKey, parseErr := pkcs11util.ParsePrivateKey(keyDER)
 		if parseErr != nil {
-			return parseErr
+			return fmt.Errorf("parse private key: %w", parseErr)
 		}
 		algorithm, detectionErr := pkcs11util.DetectKeyAlgorithm(privateKey)
 		if detectionErr != nil {
@@ -421,7 +407,7 @@ func (a *App) importKey() error {
 		if promptErr != nil {
 			return promptErr
 		}
-		secretKey, decodeErr := hex.DecodeString(strings.TrimSpace(rawToken))
+		secretKey, decodeErr := hex.DecodeString(strings.TrimSpace(string(contents)))
 		if decodeErr != nil {
 			return fmt.Errorf("secret key not in HEX string format: %w", decodeErr)
 		}
