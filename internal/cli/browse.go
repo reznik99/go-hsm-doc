@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 const (
 	browseParent    = ".."
 	browseSelectDir = "[ Use this directory ]"
+	maxInputSize    = 1024 * 1024 // 1 MiB
 )
 
 // browseForFile navigates directories (starting at the working directory) and
@@ -76,14 +78,46 @@ func (a *App) browse(pickDir bool) (string, error) {
 			if info, err := os.Stat(dir); err != nil {
 				return "", err
 			} else if !info.IsDir() {
+				if !info.Mode().IsRegular() {
+					return "", fmt.Errorf("%q is not a regular file", dir)
+				}
 				return dir, nil
 			}
 		}
 	}
 }
 
-// writeOutput saves data to a file the user chooses via the directory browser.
-// Files are written 0600 since they may carry key material.
+// readInput reads a regular file and rejects input larger than 1 MiB.
+func readInput(path string) ([]byte, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%q is not a regular file", path)
+	}
+	if info.Size() > maxInputSize {
+		return nil, fmt.Errorf("%q exceeds the 1 MiB input limit", path)
+	}
+
+	file, err := os.Open(path) //nolint:gosec // user-selected path, no trust boundary crossed
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+
+	contents, err := io.ReadAll(io.LimitReader(file, maxInputSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(contents) > maxInputSize {
+		return nil, fmt.Errorf("%q exceeds the 1 MiB input limit", path)
+	}
+	return contents, nil
+}
+
+// writeOutput saves data to a new 0600 file in a user-selected directory.
+// It refuses to overwrite an existing file.
 func (a *App) writeOutput(defaultName string, data []byte) error {
 	dir, err := a.browseForDir()
 	if err != nil {

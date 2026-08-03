@@ -38,6 +38,20 @@ func TestGenerateAESKeyTemplate(t *testing.T) {
 	}
 }
 
+func TestGenerateAESKeyRejectsInvalidLength(t *testing.T) {
+	p11 := &P11{Ctx: mocks.NewMockCryptoki(t)}
+	if _, err := p11.GenerateAESKey(testSession, "label", nil, 135, false, false); err == nil {
+		t.Fatal("expected an error for an invalid AES key length")
+	}
+}
+
+func TestGenerateDESKeyRejectsInvalidLength(t *testing.T) {
+	p11 := &P11{Ctx: mocks.NewMockCryptoki(t)}
+	if _, err := p11.GenerateDESKey(testSession, "label", nil, 256, false, false); err == nil {
+		t.Fatal("expected an error for an invalid DES key length")
+	}
+}
+
 func TestGenerateRSAKeypairTemplates(t *testing.T) {
 	var mech []*pkcs11.Mechanism
 	var pub, priv []*pkcs11.Attribute

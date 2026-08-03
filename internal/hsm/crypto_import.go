@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/miekg/pkcs11"
@@ -75,6 +76,27 @@ func (p *P11) ImportPublicKey(sh pkcs11.SessionHandle, pub any, keyLabel string,
 
 // ImportSecretKey imports an AES/DES/3DES secret key using an ephemeral RSA 2048 wrapping key.
 func (p *P11) ImportSecretKey(sh pkcs11.SessionHandle, rawKey []byte, keyLabel string, objectID []byte, algorithm string, extractable, ephemeral bool) (handle pkcs11.ObjectHandle, err error) {
+	switch strings.ToUpper(algorithm) {
+	case "AES":
+		if len(rawKey) != 16 && len(rawKey) != 24 && len(rawKey) != 32 {
+			return 0, fmt.Errorf("invalid AES key length %d: must be 16, 24, or 32 bytes", len(rawKey))
+		}
+	case "DES":
+		if len(rawKey) != 8 {
+			return 0, fmt.Errorf("invalid DES key length %d: must be 8 bytes", len(rawKey))
+		}
+	case "2DES":
+		if len(rawKey) != 16 {
+			return 0, fmt.Errorf("invalid 2DES key length %d: must be 16 bytes", len(rawKey))
+		}
+	case "3DES":
+		if len(rawKey) != 24 {
+			return 0, fmt.Errorf("invalid 3DES key length %d: must be 24 bytes", len(rawKey))
+		}
+	default:
+		return 0, fmt.Errorf("unrecognized secret key algorithm %q", algorithm)
+	}
+
 	// Generate Ephemeral RSA wrapping keypair and extract the public key
 	wrappingKeyHandle, unwrappingKeyHandle, err := p.GenerateRSAKeypair(sh, time.Now().Format(time.DateTime), nil, 2048, false, true)
 	if err != nil {

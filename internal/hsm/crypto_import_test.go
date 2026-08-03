@@ -116,3 +116,24 @@ func TestImportCertificateTemplate(t *testing.T) {
 		t.Error("CKA_ID mismatch")
 	}
 }
+
+func TestImportSecretKeyRejectsInvalidLength(t *testing.T) {
+	tests := []struct {
+		algorithm string
+		length    int
+	}{
+		{algorithm: "AES", length: 15},
+		{algorithm: "DES", length: 7},
+		{algorithm: "2DES", length: 8},
+		{algorithm: "3DES", length: 16},
+	}
+
+	for _, test := range tests {
+		t.Run(test.algorithm, func(t *testing.T) {
+			p11 := &P11{Ctx: mocks.NewMockCryptoki(t)}
+			if _, err := p11.ImportSecretKey(testSession, make([]byte, test.length), "label", nil, test.algorithm, false, false); err == nil {
+				t.Fatalf("expected an error for a %d-byte %s key", test.length, test.algorithm)
+			}
+		})
+	}
+}

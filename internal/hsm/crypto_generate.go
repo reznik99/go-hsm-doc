@@ -10,6 +10,12 @@ import (
 
 // GenerateAESKey generates an AES key in the HSM.
 func (p *P11) GenerateAESKey(sh pkcs11.SessionHandle, label string, objectID []byte, keylength int, extractable, ephemeral bool) (pkcs11.ObjectHandle, error) {
+	switch keylength {
+	case 128, 192, 256:
+	default:
+		return 0, fmt.Errorf("invalid AES key length %d: must be 128, 192, or 256 bits", keylength)
+	}
+
 	if objectID == nil {
 		objectID = make([]byte, 16)
 		if _, err := rand.Read(objectID); err != nil {
@@ -68,6 +74,8 @@ func (p *P11) GenerateDESKey(sh pkcs11.SessionHandle, label string, objectID []b
 	case 192: // DES3
 		mech = append(mech, pkcs11.NewMechanism(pkcs11.CKM_DES3_KEY_GEN, nil))
 		temp = append(temp, pkcs11.NewAttribute(pkcs11.CKA_KEY_TYPE, pkcs11.CKK_DES3))
+	default:
+		return 0, fmt.Errorf("invalid DES key length %d: must be 64, 128, or 192 bits", keylength)
 	}
 
 	return p.Ctx.GenerateKey(sh, mech, temp)

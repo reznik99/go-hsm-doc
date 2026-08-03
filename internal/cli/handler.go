@@ -6,7 +6,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -321,8 +320,7 @@ func (a *App) importKey() error {
 	if err != nil {
 		return err
 	}
-	// Path is chosen by the user through the interactive browser, under their own permissions.
-	contents, err := os.ReadFile(tokenPath) //nolint:gosec // user-selected path, no trust boundary crossed
+	contents, err := readInput(tokenPath)
 	if err != nil {
 		return fmt.Errorf("read %s file: %w", objectType, err)
 	}
